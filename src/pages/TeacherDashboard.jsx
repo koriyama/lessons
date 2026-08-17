@@ -573,6 +573,12 @@ export default function TeacherDashboard() {
                             rel="noopener noreferrer"
                             className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
                           >
+						  <Link
+  to={`/builder/${lesson.id}`}
+  className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap"
+>
+  ✏️ Edit
+</Link>
                             Preview
                           </Link>
 
