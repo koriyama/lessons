@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* default (teacher / admin) palette */
+  --color-ink: #1e2a32;
+  --color-paper: #edf0ef;
+  --color-surface: #ffffff;
+  --color-rule: #d7dad2;
+  --color-muted: #5c6670;
+  --color-crest: #5b3a5c;
+  --color-crest-soft: #ede3ed;
+  --color-forest: #3f6b4a;
+  --color-forest-soft: #e7efe7;
+  --color-amber: #b8752e;
+  --color-amber-soft: #f6e9d6;
+
+  /* card/button/input corner rounding — kept crisp by default */
+  --radius-card: 0.125rem; /* ~= Tailwind's rounded-sm */
+}
+
+/* Student-facing palette: warm, subtle pastel red/pink/purple.
+   Adjust any of these hex values to taste — everything below
+   is just CSS custom properties, so tweaks here ripple through
+   every bg-*, text-*, border-* utility automatically. */
+.student-theme {
+  --color-ink: #3a2233;         /* soft aubergine instead of near-black */
+  --color-paper: #fbf1f4;       /* warm blush page background */
+  --color-surface: #fffbfc;     /* near-white card surface with a pink cast */
+  --color-rule: #eecfd9;        /* dusty pink border/rule color */
+  --color-muted: #8a6b7a;       /* muted mauve for secondary text */
+  --color-crest: #b4547a;       /* primary accent: soft raspberry pink */
+  --color-crest-soft: #f8e3ea;  /* pale pink accent background */
+  --color-forest: #6f7d4f;      /* success accent, softened toward the palette */
+  --color-forest-soft: #edf1e1;
+  --color-amber: #a3703f;       /* warning accent, softened */
+  --color-amber-soft: #f6e9da;
+
+  /* a touch more rounding for a friendlier, less "industrial" feel */
+  --radius-card: 0.625rem; /* ~= Tailwind's rounded-lg/xl; tweak freely */
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-paper text-ink font-body antialiased;
+  }
+  h1, h2, h3 {
+    @apply font-display text-ink;
+  }
+  ::selection {
+    background: #7A2E2E22;
+  }
+  :focus-visible {
+    outline: 2px solid #7A2E2E;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .rail-label {
+    @apply text-xs uppercase tracking-widest text-muted font-mono;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-card px-4 py-2 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    @apply btn bg-ink text-paper hover:bg-crest;
+  }
+  .btn-secondary {
+    @apply btn border border-rule bg-surface text-ink hover:border-ink;
+  }
+  .btn-ghost {
+    @apply btn text-muted hover:text-ink;
+  }
+  .card {
+    @apply bg-surface border border-rule rounded-card;
+  }
+  .field-label {
+    @apply block text-sm font-medium text-ink mb-1;
+  }
+  .field-input {
+    @apply w-full rounded-card border border-rule bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-ink outline-none;
+  }
+}
