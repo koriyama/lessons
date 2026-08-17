@@ -541,95 +541,87 @@ export default function TeacherDashboard() {
                           </div>
                         </div>
 
-                        {/* ---------- ACTION BUTTONS (wrapped for hover isolation) ---------- */}
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div className="relative">
+                        {/* ---------- ACTION BUTTONS ---------- */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Copy Link */}
+                          <button
+                            onClick={() => handleCopyLink(lesson.share_slug)}
+                            className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
+                            title="Copy student URL to clipboard"
+                          >
+                            📋 Copy Link
+                          </button>
+
+                          {/* EDIT BUTTON - RESTORED */}
+                          <Link
+                            to={`/builder/${lesson.id}`}
+                            className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap font-medium"
+                          >
+                            ✏️ Edit
+                          </Link>
+
+                          {/* Preview (Student View) */}
+                          <Link
+                            to={`/lesson/${lesson.share_slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
+                          >
+                            Preview
+                          </Link>
+
+                          {/* Student View with Draft */}
+                          <Link
+                            to={`/lesson/${lesson.share_slug}?draft=true`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:underline px-2 py-1 font-medium whitespace-nowrap"
+                          >
+                            Student View
+                          </Link>
+
+                          {/* Results */}
+                          <Link
+                            to={`/results/${lesson.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-gray-600 hover:underline px-2 py-1 whitespace-nowrap"
+                          >
+                            Results
+                          </Link>
+
+                          {/* Duplicate */}
+                          <button
+                            onClick={() => handleDuplicate(lesson.id)}
+                            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 whitespace-nowrap"
+                          >
+                            Copy
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
+                            className="text-xs text-red-600 hover:text-red-800 px-2 py-1 whitespace-nowrap font-medium"
+                          >
+                            🗑️ Delete
+                          </button>
+
+                          {/* Publish / Unpublish */}
+                          {lesson.status === 'draft' ? (
                             <button
-                              onClick={() => handleCopyLink(lesson.share_slug)}
-                              className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap block"
-                              title="Copy student URL to clipboard"
+                              onClick={() => handlePublish(lesson.id)}
+                              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 whitespace-nowrap"
                             >
-                              📋 Copy Link
+                              Publish
                             </button>
-                          </div>
-
-                          <div className="relative">
-                            <Link
-                              to={`/builder/${lesson.id}`}
-                              className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap block"
-                            >
-                              ✏️ Edit
-                            </Link>
-                          </div>
-
-                          <div className="relative">
-                            <Link
-                              to={`/lesson/${lesson.share_slug}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap block"
-                            >
-                              Preview
-                            </Link>
-                          </div>
-
-                          <div className="relative">
-                            <Link
-                              to={`/lesson/${lesson.share_slug}?draft=true`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-green-600 hover:underline px-2 py-1 font-medium whitespace-nowrap block"
-                            >
-                              Student View
-                            </Link>
-                          </div>
-
-                          <div className="relative">
-                            <Link
-                              to={`/results/${lesson.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-gray-600 hover:underline px-2 py-1 whitespace-nowrap block"
-                            >
-                              Results
-                            </Link>
-                          </div>
-
-                          <div className="relative">
+                          ) : (
                             <button
-                              onClick={() => handleDuplicate(lesson.id)}
-                              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 whitespace-nowrap block"
+                              onClick={() => handleUnpublish(lesson.id)}
+                              className="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 whitespace-nowrap"
                             >
-                              Copy
+                              Unpublish
                             </button>
-                          </div>
-
-                          <div className="relative">
-                            <button
-                              onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
-                              className="text-xs text-red-600 hover:text-red-800 px-2 py-1 whitespace-nowrap font-medium block"
-                            >
-                              🗑️ Delete
-                            </button>
-                          </div>
-
-                          <div className="relative">
-                            {lesson.status === 'draft' ? (
-                              <button
-                                onClick={() => handlePublish(lesson.id)}
-                                className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 whitespace-nowrap block"
-                              >
-                                Publish
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleUnpublish(lesson.id)}
-                                className="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 whitespace-nowrap block"
-                              >
-                                Unpublish
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>
