@@ -34,7 +34,7 @@ const STAGE_LABEL = {
   reasoning: 'Reasoning'
 }
 
-// ---------- Memoised Reference Panel (stops the audio blink) ----------
+// ---------- Memoised Reference Panel ----------
 const ReferencePanel = memo(function ReferencePanel({
   lesson,
   vocabulary,
@@ -47,7 +47,7 @@ const ReferencePanel = memo(function ReferencePanel({
 }) {
   return (
     <div className="space-y-6">
-      {/* ---------- AUDIO (with toggle) ---------- */}
+      {/* Audio */}
       {lesson.audio_url && (
         <div>
           <button
@@ -69,7 +69,7 @@ const ReferencePanel = memo(function ReferencePanel({
         </div>
       )}
 
-      {/* ---------- READING (with toggle) ---------- */}
+      {/* Reading */}
       {lesson.reading_text && (
         <div>
           <button
@@ -83,7 +83,7 @@ const ReferencePanel = memo(function ReferencePanel({
         </div>
       )}
 
-      {/* ---------- VOCABULARY (with toggle) ---------- */}
+      {/* Vocabulary */}
       {vocabulary.length > 0 && (
         <div className="card p-6">
           <button
@@ -134,7 +134,7 @@ export default function StudentLesson() {
 
   const [pageIndex, setPageIndex] = useState(0)
 
-  // ---------- 1. Load lesson data (supports ?draft=true) ----------
+  // ---------- 1. Load lesson data ----------
   useEffect(() => {
     ;(async () => {
       try {
@@ -165,7 +165,7 @@ export default function StudentLesson() {
     return grouped
   }, [sections, activities])
 
-  // ---------- 3. Save & Exit hook (localStorage version) ----------
+  // ---------- 3. Save & Exit hook ----------
   const { progress, loading: progressLoading, save } = useLessonProgress(lesson?.id, studentName);
 
   // ---------- 4. Restore saved progress ----------
@@ -222,7 +222,6 @@ export default function StudentLesson() {
         }
       })
       await completeSubmission(submissionId, { score, maxAutoScore, responses })
-      // Clear saved progress after final submission
       save(0, {});
       setResult({ score, maxAutoScore })
     } catch (e) {
@@ -232,7 +231,7 @@ export default function StudentLesson() {
     }
   }
 
-  // ---------- 7. Restart function ----------
+  // ---------- 7. Restart ----------
   function handleRestart() {
     if (window.confirm('This will delete all your saved progress for this lesson. Are you sure?')) {
       setAnswers({});
@@ -242,7 +241,27 @@ export default function StudentLesson() {
     }
   }
 
-  // ---------- 8. Early Returns (Error, Loading, Name Gate, Completion) ----------
+  // ---------- 8. Navigation (SCROLL FIX) ----------
+  function goNext() {
+    if (isLastPage) {
+      handleSubmit()
+    } else {
+      setPageIndex((p) => p + 1)
+      // Wait for the DOM to update, then scroll to top
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }, 100)
+    }
+  }
+
+  function goBack() {
+    setPageIndex((p) => Math.max(0, p - 1))
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 100)
+  }
+
+  // ---------- 9. Early Returns ----------
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -267,14 +286,12 @@ export default function StudentLesson() {
         <form onSubmit={handleStart} className="card p-8 max-w-sm w-full space-y-4">
           <p className="rail-label">{lesson.level}</p>
           <h1 className="text-2xl font-display">{lesson.title}</h1>
-
           <div className="text-sm text-muted space-y-1">
             <p>Enter your name to begin this lesson.</p>
             <p>名前を入力してください。</p>
             <p className="mt-2">Please use the <strong>exact same name</strong> you used before to continue your saved lesson.</p>
             <p>以前使用したものと<strong>まったく同じ名前</strong>を入力して、続きを再開してください。</p>
           </div>
-
           <input
             className="field-input"
             placeholder="Full name"
@@ -311,56 +328,44 @@ export default function StudentLesson() {
     )
   }
 
-  // ---------- 9. Main Lesson View ----------
+  // ---------- 10. Main Lesson View ----------
   const isPaginated = sections.length > 0
   const currentPage = pages[pageIndex] || pages[0]
   const isLastPage = pageIndex === pages.length - 1
   const hasReference = Boolean(lesson.audio_url || lesson.reading_text || lesson.images?.length || vocabulary.length)
 
-  function goNext() {
-    if (isLastPage) {
-      handleSubmit()
-    } else {
-      setPageIndex((p) => p + 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
-  }
-
-  function goBack() {
-    setPageIndex((p) => Math.max(0, p - 1))
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
   return (
     <div className="min-h-screen">
-      {/* ---------- HEADER with Action Buttons ---------- */}
+      {/* ---------- NEW & IMPROVED HEADER (Mobile-friendly) ---------- */}
       <header className="border-b border-rule bg-surface">
-        <div className="mx-auto max-w-6xl px-6 py-4 flex flex-wrap justify-between items-start gap-2">
-          <div>
-            <p className="rail-label mb-1">
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          {/* Row 1: Level + Page info | Buttons */}
+          <div className="flex flex-wrap justify-between items-center gap-2">
+            <p className="rail-label mb-0 text-xs sm:text-sm">
               {lesson.level} · English On Demand Lesson
               {isPaginated && ` · page ${pageIndex + 1} of ${pages.length}`}
-              {isDraftPreview && <span className="ml-2 text-xs text-orange-500 font-medium">(DRAFT PREVIEW)</span>}
+              {isDraftPreview && <span className="ml-2 text-orange-500 font-medium">(DRAFT PREVIEW)</span>}
             </p>
-            <h1 className="text-2xl font-display">{lesson.title}</h1>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={handleRestart}
+                className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors min-h-[44px] flex items-center"
+              >
+                🔄 Restart
+              </button>
+              <SaveExitButton
+                onSave={() => save(pageIndex, answers)}
+                isLoading={progressLoading}
+                slug={slug}
+              />
+            </div>
           </div>
-          <div className="flex gap-3 flex-shrink-0 mt-1">
-            <button
-              onClick={handleRestart}
-              className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors min-h-[44px]"
-            >
-              🔄 Restart
-            </button>
-            <SaveExitButton
-              onSave={() => save(pageIndex, answers)}
-              isLoading={progressLoading}
-              slug={slug}
-            />
-          </div>
+          {/* Row 2: Lesson Title (clean, on its own line) */}
+          <h1 className="text-xl sm:text-2xl font-display mt-1 leading-tight">{lesson.title}</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
         {/* ---------- TOP NAVIGATION BAR ---------- */}
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
           {isPaginated && pageIndex > 0 ? (
@@ -378,6 +383,17 @@ export default function StudentLesson() {
           </button>
         </div>
 
+        {/* ---------- SECTION TITLE & INSTRUCTIONS (MOVED TO THE TOP) ---------- */}
+        {isPaginated && currentPage.title && (
+          <div className="mb-4">
+            <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
+            {currentPage.intro_text && (
+              <p className="text-sm text-muted">{renderInline(currentPage.intro_text, 'sec-intro')}</p>
+            )}
+          </div>
+        )}
+
+        {/* ---------- MAIN CONTENT (Reference Panel + Activities) ---------- */}
         <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
           {hasReference && (
             <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0">
@@ -394,16 +410,8 @@ export default function StudentLesson() {
             </div>
           )}
 
-          <div className={hasReference ? '' : ''}>
-            {isPaginated && currentPage.title && (
-              <div className="mb-4">
-                <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
-                {currentPage.intro_text && (
-                  <p className="text-sm text-muted">{renderInline(currentPage.intro_text, 'sec-intro')}</p>
-                )}
-              </div>
-            )}
-
+          <div>
+            {/* Activities */}
             <div className="space-y-4">
               {currentPage.activities.map((activity) => {
                 const Player = PLAYERS[activity.type]
@@ -423,6 +431,7 @@ export default function StudentLesson() {
               })}
             </div>
 
+            {/* Bottom Navigation */}
             <div className="flex justify-between pt-6">
               {isPaginated && pageIndex > 0 ? (
                 <button className="btn-secondary" onClick={goBack}>
