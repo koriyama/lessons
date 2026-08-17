@@ -338,8 +338,8 @@ export default function TeacherDashboard() {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col md:flex-row gap-6">
-            <aside className="w-full md:w-56 md:flex-shrink-0">
+          <div className="flex gap-6">
+            <aside className="w-56 flex-shrink-0">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sticky top-20">
                 <h2 className="font-semibold text-gray-700 text-sm uppercase tracking-wider mb-3">
                   Folders
@@ -464,7 +464,7 @@ export default function TeacherDashboard() {
                   {filteredLessons.map((lesson) => (
                     <div
                       key={lesson.id}
-                      className={`bg-white rounded-lg shadow-sm border p-3 md:p-5 hover:shadow-md transition-shadow ${
+                      className={`bg-white rounded-lg shadow-sm border p-5 hover:shadow-md transition-shadow ${
                         selectedLessonIds.includes(lesson.id) ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200'
                       }`}
                       data-lesson-id={lesson.id}
@@ -542,20 +542,28 @@ export default function TeacherDashboard() {
                         </div>
 
                         {/* ---------- ACTION BUTTONS ---------- */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {/* Copy Link */}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <select
+                            value={lesson.folder_id || ''}
+                            onChange={(e) => handleMoveLesson(lesson.id, e.target.value || null)}
+                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="">Move to...</option>
+                            <option value="">📄 Uncategorized</option>
+                            {folders.map(f => (
+                              <option key={f.id} value={f.id}>📁 {f.name}</option>
+                            ))}
+                          </select>
+
                           <button
                             onClick={() => handleCopyLink(lesson.share_slug)}
                             className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
                             title="Copy student URL to clipboard"
                           >
-                            
-							
-							
-							📋 Copy Link
+                            📋 Copy Link
                           </button>
 
-                          {/* EDIT BUTTON - RESTORED */}
+                          {/* ✅ EDIT BUTTON - RESTORED */}
                           <Link
                             to={`/builder/${lesson.id}`}
                             className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap font-medium"
@@ -563,7 +571,6 @@ export default function TeacherDashboard() {
                             ✏️ Edit
                           </Link>
 
-                          {/* Preview (Student View) */}
                           <Link
                             to={`/lesson/${lesson.share_slug}`}
                             target="_blank"
@@ -573,7 +580,6 @@ export default function TeacherDashboard() {
                             Preview
                           </Link>
 
-                          {/* Student View with Draft */}
                           <Link
                             to={`/lesson/${lesson.share_slug}?draft=true`}
                             target="_blank"
@@ -583,7 +589,6 @@ export default function TeacherDashboard() {
                             Student View
                           </Link>
 
-                          {/* Results */}
                           <Link
                             to={`/results/${lesson.id}`}
                             target="_blank"
@@ -593,7 +598,6 @@ export default function TeacherDashboard() {
                             Results
                           </Link>
 
-                          {/* Duplicate */}
                           <button
                             onClick={() => handleDuplicate(lesson.id)}
                             className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 whitespace-nowrap"
@@ -601,7 +605,6 @@ export default function TeacherDashboard() {
                             Copy
                           </button>
 
-                          {/* Delete */}
                           <button
                             onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
                             className="text-xs text-red-600 hover:text-red-800 px-2 py-1 whitespace-nowrap font-medium"
@@ -609,7 +612,6 @@ export default function TeacherDashboard() {
                             🗑️ Delete
                           </button>
 
-                          {/* Publish / Unpublish */}
                           {lesson.status === 'draft' ? (
                             <button
                               onClick={() => handlePublish(lesson.id)}
