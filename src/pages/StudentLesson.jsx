@@ -34,7 +34,6 @@ const STAGE_LABEL = {
   reasoning: 'Reasoning'
 }
 
-// ---------- Memoised Reference Panel ----------
 const ReferencePanel = memo(function ReferencePanel({
   lesson,
   vocabulary,
@@ -47,7 +46,6 @@ const ReferencePanel = memo(function ReferencePanel({
 }) {
   return (
     <div className="space-y-6">
-      {/* Audio */}
       {lesson.audio_url && (
         <div>
           <button
@@ -69,7 +67,6 @@ const ReferencePanel = memo(function ReferencePanel({
         </div>
       )}
 
-      {/* Reading */}
       {lesson.reading_text && (
         <div>
           <button
@@ -83,7 +80,6 @@ const ReferencePanel = memo(function ReferencePanel({
         </div>
       )}
 
-      {/* Vocabulary */}
       {vocabulary.length > 0 && (
         <div className="card p-6">
           <button
@@ -127,14 +123,12 @@ export default function StudentLesson() {
   const [result, setResult] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Toggle states – all default to 'true' (expanded)
   const [showAudio, setShowAudio] = useState(true)
   const [showReading, setShowReading] = useState(true)
   const [showVocab, setShowVocab] = useState(true)
 
   const [pageIndex, setPageIndex] = useState(0)
 
-  // ---------- 1. Load lesson data ----------
   useEffect(() => {
     ;(async () => {
       try {
@@ -150,7 +144,6 @@ export default function StudentLesson() {
     })()
   }, [slug, isDraftPreview])
 
-  // ---------- 2. Define pages ----------
   const pages = useMemo(() => {
     if (sections.length === 0) {
       return [{ title: null, intro_text: null, activities }]
@@ -165,10 +158,8 @@ export default function StudentLesson() {
     return grouped
   }, [sections, activities])
 
-  // ---------- 3. Save & Exit hook ----------
   const { progress, loading: progressLoading, save } = useLessonProgress(lesson?.id, studentName);
 
-  // ---------- 4. Restore saved progress ----------
   useEffect(() => {
     if (!progress) return;
     if (progress.draft_answers && Object.keys(progress.draft_answers).length > 0) {
@@ -181,7 +172,6 @@ export default function StudentLesson() {
     }
   }, [progress, pages.length]);
 
-  // ---------- 5. Auto-save (debounced) ----------
   useEffect(() => {
     if (!lesson?.id || activities.length === 0) return;
     const timer = setTimeout(() => {
@@ -190,7 +180,6 @@ export default function StudentLesson() {
     return () => clearTimeout(timer);
   }, [answers, pageIndex, lesson?.id, activities.length, save]);
 
-  // ---------- 6. Event Handlers ----------
   async function handleStart(e) {
     e.preventDefault()
     if (!studentName.trim()) return
@@ -207,13 +196,16 @@ export default function StudentLesson() {
     try {
       let score = 0
       let maxAutoScore = 0
+
       const responses = activities.map((activity) => {
         const value = answers[activity.id] ?? ''
         const graded = gradeActivity(activity, value)
+
         if (isAutoGraded(activity.type)) {
           maxAutoScore += activity.points ?? 1
           score += graded.score || 0
         }
+
         return {
           activityId: activity.id,
           responseText: value,
@@ -221,33 +213,32 @@ export default function StudentLesson() {
           score: graded.score
         }
       })
+
       await completeSubmission(submissionId, { score, maxAutoScore, responses })
-      save(0, {});
+      save(0, {})
       setResult({ score, maxAutoScore })
     } catch (e) {
+      console.error('Submission error:', e)
       setError(e.message)
     } finally {
       setSubmitting(false)
     }
   }
 
-  // ---------- 7. Restart ----------
   function handleRestart() {
     if (window.confirm('This will delete all your saved progress for this lesson. Are you sure?')) {
-      setAnswers({});
-      setPageIndex(0);
-      save(0, {});
-      alert('Progress has been reset. You are back at the start.');
+      setAnswers({})
+      setPageIndex(0)
+      save(0, {})
+      alert('Progress has been reset. You are back at the start.')
     }
   }
 
-  // ---------- 8. Navigation (SCROLL FIX) ----------
   function goNext() {
     if (isLastPage) {
       handleSubmit()
     } else {
       setPageIndex((p) => p + 1)
-      // Wait for the DOM to update, then scroll to top
       setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }, 100)
@@ -261,7 +252,6 @@ export default function StudentLesson() {
     }, 100)
   }
 
-  // ---------- 9. Early Returns ----------
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -328,7 +318,6 @@ export default function StudentLesson() {
     )
   }
 
-  // ---------- 10. Main Lesson View ----------
   const isPaginated = sections.length > 0
   const currentPage = pages[pageIndex] || pages[0]
   const isLastPage = pageIndex === pages.length - 1
@@ -336,10 +325,8 @@ export default function StudentLesson() {
 
   return (
     <div className="min-h-screen">
-      {/* ---------- NEW & IMPROVED HEADER (Mobile-friendly) ---------- */}
       <header className="border-b border-rule bg-surface">
         <div className="mx-auto max-w-6xl px-4 py-3">
-          {/* Row 1: Level + Page info | Buttons */}
           <div className="flex flex-wrap justify-between items-center gap-2">
             <p className="rail-label mb-0 text-xs sm:text-sm">
               {lesson.level} · English On Demand Lesson
@@ -360,13 +347,11 @@ export default function StudentLesson() {
               />
             </div>
           </div>
-          {/* Row 2: Lesson Title (clean, on its own line) */}
           <h1 className="text-xl sm:text-2xl font-display mt-1 leading-tight">{lesson.title}</h1>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
-        {/* ---------- TOP NAVIGATION BAR ---------- */}
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
           {isPaginated && pageIndex > 0 ? (
             <button className="btn-secondary text-sm" onClick={goBack}>
@@ -383,7 +368,6 @@ export default function StudentLesson() {
           </button>
         </div>
 
-        {/* ---------- SECTION TITLE & INSTRUCTIONS (MOVED TO THE TOP) ---------- */}
         {isPaginated && currentPage.title && (
           <div className="mb-4">
             <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
@@ -393,7 +377,6 @@ export default function StudentLesson() {
           </div>
         )}
 
-        {/* ---------- MAIN CONTENT (Reference Panel + Activities) ---------- */}
         <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
           {hasReference && (
             <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0">
@@ -411,7 +394,6 @@ export default function StudentLesson() {
           )}
 
           <div>
-            {/* Activities */}
             <div className="space-y-4">
               {currentPage.activities.map((activity) => {
                 const Player = PLAYERS[activity.type]
@@ -431,7 +413,6 @@ export default function StudentLesson() {
               })}
             </div>
 
-            {/* Bottom Navigation */}
             <div className="flex justify-between pt-6">
               {isPaginated && pageIndex > 0 ? (
                 <button className="btn-secondary" onClick={goBack}>

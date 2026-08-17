@@ -62,7 +62,6 @@ export async function getLessonBySlug(slug) {
 }
 
 export async function getDraftLessonBySlug(slug) {
-  // Bypasses the 'published' status check – for teacher preview/testing only.
   const { data, error } = await supabase
     .from('lessons')
     .select('*')
@@ -329,8 +328,7 @@ export async function getResultsForLesson(lessonId) {
   }))
 }
 
-// ---------- Save & Exit (localStorage version – keep these) ----------
-
+// ---------- Save & Exit ----------
 export async function saveLessonProgress(lessonId, currentSectionIndex, currentActivityIndex, draftAnswers) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
@@ -370,7 +368,6 @@ export async function getLessonProgress(lessonId) {
 }
 
 // ---------- folders ----------
-
 export async function listFolders() {
   const { data, error } = await supabase
     .from('folders')
@@ -456,6 +453,15 @@ export async function renameLesson(lessonId, newTitle) {
   return data
 }
 
+export async function deleteLesson(lessonId) {
+  const { error } = await supabase
+    .from('lessons')
+    .delete()
+    .eq('id', lessonId)
+  assertNoError(error, 'Failed to delete lesson')
+  return true
+}
+
 export async function deleteSubmissions(submissionIds) {
   if (!submissionIds || submissionIds.length === 0) return true
   const { error } = await supabase
@@ -463,14 +469,5 @@ export async function deleteSubmissions(submissionIds) {
     .delete()
     .in('id', submissionIds)
   assertNoError(error, 'Failed to delete submissions')
-  return true
-}
-
-export async function deleteLesson(lessonId) {
-  const { error } = await supabase
-    .from('lessons')
-    .delete()
-    .eq('id', lessonId)
-  assertNoError(error, 'Failed to delete lesson')
   return true
 }
