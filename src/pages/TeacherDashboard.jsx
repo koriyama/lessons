@@ -12,7 +12,7 @@ import {
   setLessonStatus,
   duplicateLesson,
   renameLesson,
-  deleteLesson        // <-- NEW
+  deleteLesson
 } from '../lib/api'
 
 import {
@@ -269,7 +269,6 @@ export default function TeacherDashboard() {
     await loadData()
   }
 
-  // ---------- NEW: Delete Lesson ----------
   async function handleDeleteLesson(lessonId, lessonTitle) {
     if (!confirm(`Permanently delete "${lessonTitle}"? This cannot be undone.`)) return
     try {
@@ -280,13 +279,11 @@ export default function TeacherDashboard() {
     }
   }
 
-  // ---------- NEW: Copy Student Link ----------
   function handleCopyLink(slug) {
     const url = `${window.location.origin}/lesson/${slug}`
     navigator.clipboard.writeText(url).then(() => {
       alert('Student link copied to clipboard!')
     }).catch(() => {
-      // Fallback for older browsers
       const textarea = document.createElement('textarea')
       textarea.value = url
       document.body.appendChild(textarea)
@@ -467,7 +464,7 @@ export default function TeacherDashboard() {
                   {filteredLessons.map((lesson) => (
                     <div
                       key={lesson.id}
-                      className={`bg-white rounded-lg shadow-sm border p-5 hover:shadow-md transition-shadow ${
+                      className={`bg-white rounded-lg shadow-sm border p-3 md:p-5 hover:shadow-md transition-shadow ${
                         selectedLessonIds.includes(lesson.id) ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200'
                       }`}
                       data-lesson-id={lesson.id}
@@ -544,92 +541,95 @@ export default function TeacherDashboard() {
                           </div>
                         </div>
 
-                        {/* ---------- ACTION BUTTONS (UPDATED) ---------- */}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <select
-                            value={lesson.folder_id || ''}
-                            onChange={(e) => handleMoveLesson(lesson.id, e.target.value || null)}
-                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          >
-                            <option value="">Move to...</option>
-                            <option value="">📄 Uncategorized</option>
-                            {folders.map(f => (
-                              <option key={f.id} value={f.id}>📁 {f.name}</option>
-                            ))}
-                          </select>
-
-                          {/* ---------- COPY LINK (NEW) ---------- */}
-                          <button
-                            onClick={() => handleCopyLink(lesson.share_slug)}
-                            className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
-                            title="Copy student URL to clipboard"
-                          >
-                            📋 Copy Link
-                          </button>
-
-                          <Link
-                            to={`/lesson/${lesson.share_slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
-                          >
-						  <Link
-  to={`/builder/${lesson.id}`}
-  className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap"
->
-  ✏️ Edit
-</Link>
-                            Preview
-                          </Link>
-
-                          <Link
-                            to={`/lesson/${lesson.share_slug}?draft=true`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-green-600 hover:underline px-2 py-1 font-medium whitespace-nowrap"
-                          >
-                            Student View
-                          </Link>
-
-                          <Link
-                            to={`/results/${lesson.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-gray-600 hover:underline px-2 py-1 whitespace-nowrap"
-                          >
-                            Results
-                          </Link>
-
-                          <button
-                            onClick={() => handleDuplicate(lesson.id)}
-                            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 whitespace-nowrap"
-                          >
-                            Copy
-                          </button>
-
-                          {/* ---------- DELETE (NEW) ---------- */}
-                          <button
-                            onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
-                            className="text-xs text-red-600 hover:text-red-800 px-2 py-1 whitespace-nowrap font-medium"
-                          >
-                            🗑️ Delete
-                          </button>
-
-                          {lesson.status === 'draft' ? (
+                        {/* ---------- ACTION BUTTONS (wrapped for hover isolation) ---------- */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="relative">
                             <button
-                              onClick={() => handlePublish(lesson.id)}
-                              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 whitespace-nowrap"
+                              onClick={() => handleCopyLink(lesson.share_slug)}
+                              className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap block"
+                              title="Copy student URL to clipboard"
                             >
-                              Publish
+                              📋 Copy Link
                             </button>
-                          ) : (
+                          </div>
+
+                          <div className="relative">
+                            <Link
+                              to={`/builder/${lesson.id}`}
+                              className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap block"
+                            >
+                              ✏️ Edit
+                            </Link>
+                          </div>
+
+                          <div className="relative">
+                            <Link
+                              to={`/lesson/${lesson.share_slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap block"
+                            >
+                              Preview
+                            </Link>
+                          </div>
+
+                          <div className="relative">
+                            <Link
+                              to={`/lesson/${lesson.share_slug}?draft=true`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-green-600 hover:underline px-2 py-1 font-medium whitespace-nowrap block"
+                            >
+                              Student View
+                            </Link>
+                          </div>
+
+                          <div className="relative">
+                            <Link
+                              to={`/results/${lesson.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-gray-600 hover:underline px-2 py-1 whitespace-nowrap block"
+                            >
+                              Results
+                            </Link>
+                          </div>
+
+                          <div className="relative">
                             <button
-                              onClick={() => handleUnpublish(lesson.id)}
-                              className="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 whitespace-nowrap"
+                              onClick={() => handleDuplicate(lesson.id)}
+                              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 whitespace-nowrap block"
                             >
-                              Unpublish
+                              Copy
                             </button>
-                          )}
+                          </div>
+
+                          <div className="relative">
+                            <button
+                              onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
+                              className="text-xs text-red-600 hover:text-red-800 px-2 py-1 whitespace-nowrap font-medium block"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+
+                          <div className="relative">
+                            {lesson.status === 'draft' ? (
+                              <button
+                                onClick={() => handlePublish(lesson.id)}
+                                className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 whitespace-nowrap block"
+                              >
+                                Publish
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleUnpublish(lesson.id)}
+                                className="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 whitespace-nowrap block"
+                              >
+                                Unpublish
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
