@@ -549,7 +549,10 @@ export default function TeacherDashboard() {
                             className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
                             title="Copy student URL to clipboard"
                           >
-                            📋 Copy Link
+                            
+							
+							
+							📋 Copy Link
                           </button>
 
                           {/* EDIT BUTTON - RESTORED */}
