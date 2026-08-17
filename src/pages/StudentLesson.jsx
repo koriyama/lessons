@@ -116,6 +116,8 @@ export default function StudentLesson() {
   const [activities, setActivities] = useState([])
   const [vocabulary, setVocabulary] = useState([])
   const [error, setError] = useState(null)
+  const [noActivitiesWarning, setNoActivitiesWarning] = useState(false)
+  const [reloadAttempt, setReloadAttempt] = useState(0)
 
   const [studentName, setStudentName] = useState('')
   const [submissionId, setSubmissionId] = useState(null)
@@ -129,21 +131,45 @@ export default function StudentLesson() {
 
   const [pageIndex, setPageIndex] = useState(0)
 
+  // ---------- LOAD LESSON DATA ----------
   useEffect(() => {
     ;(async () => {
       try {
+        console.log('🔍 StudentLesson: Loading lesson with slug:', slug, 'draft preview:', isDraftPreview);
         const fetchLesson = isDraftPreview ? getDraftLessonBySlug : getLessonBySlug
         const l = await fetchLesson(slug)
+        console.log('✅ StudentLesson: Lesson loaded:', l);
         setLesson(l)
-        setSections(await listSections(l.id))
-        setActivities(await listActivities(l.id))
-        setVocabulary(await listVocabulary(l.id))
+
+        console.log('📡 StudentLesson: Fetching sections for lesson ID:', l.id);
+        const sectionsData = await listSections(l.id)
+        console.log('📦 Sections loaded:', sectionsData);
+        setSections(sectionsData)
+
+        console.log('📡 StudentLesson: Fetching activities for lesson ID:', l.id);
+        const activitiesData = await listActivities(l.id)
+        console.log('📦 Activities loaded:', activitiesData);
+        setActivities(activitiesData)
+
+        console.log('📡 StudentLesson: Fetching vocabulary for lesson ID:', l.id);
+        const vocabData = await listVocabulary(l.id)
+        console.log('📦 Vocabulary loaded:', vocabData);
+        setVocabulary(vocabData)
+
+        // Check if activities are empty
+        if (!activitiesData || activitiesData.length === 0) {
+          setNoActivitiesWarning(true)
+        } else {
+          setNoActivitiesWarning(false)
+        }
       } catch (e) {
+        console.error('❌ StudentLesson: Error loading lesson data:', e)
         setError('This lesson link is not available. Check the link with your teacher.')
       }
     })()
-  }, [slug, isDraftPreview])
+  }, [slug, isDraftPreview, reloadAttempt])
 
+  // ---------- PAGES (sections + activities) ----------
   const pages = useMemo(() => {
     if (sections.length === 0) {
       return [{ title: null, intro_text: null, activities }]
@@ -158,6 +184,7 @@ export default function StudentLesson() {
     return grouped
   }, [sections, activities])
 
+  // ---------- PROGRESS (auto-save) ----------
   const { progress, loading: progressLoading, save } = useLessonProgress(lesson?.id, studentName);
 
   useEffect(() => {
@@ -180,6 +207,7 @@ export default function StudentLesson() {
     return () => clearTimeout(timer);
   }, [answers, pageIndex, lesson?.id, activities.length, save]);
 
+  // ---------- HANDLERS ----------
   async function handleStart(e) {
     e.preventDefault()
     if (!studentName.trim()) return
@@ -252,11 +280,20 @@ export default function StudentLesson() {
     }, 100)
   }
 
+  // Reload activities manually
+  function handleReloadActivities() {
+    setReloadAttempt(prev => prev + 1);
+  }
+
+  // ---------- RENDER ----------
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card p-8 max-w-md text-center">
           <p className="text-crest">{error}</p>
+          <p className="text-xs text-muted mt-2">
+            Please check the console (F12) for more details.
+          </p>
         </div>
       </div>
     )
@@ -270,6 +307,7 @@ export default function StudentLesson() {
     )
   }
 
+  // If student has not entered name yet
   if (!submissionId) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -297,6 +335,30 @@ export default function StudentLesson() {
     )
   }
 
+  // If we have a submissionId but no activities, show a warning with reload button
+  if (noActivitiesWarning) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="card p-8 max-w-md text-center">
+          <p className="text-amber-600 text-lg">⚠️ No activities found</p>
+          <p className="text-sm text-muted mt-2">
+            This lesson doesn't have any activities. Please contact your teacher.
+          </p>
+          <button
+            onClick={handleReloadActivities}
+            className="btn-secondary mt-4"
+          >
+            🔄 Reload Activities
+          </button>
+          <p className="text-xs text-muted mt-4">
+            If you are the teacher, try saving the lesson again in the builder.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // If result (lesson completed)
   if (result) {
     const hasAuto = result.maxAutoScore > 0
     return (
@@ -318,6 +380,7 @@ export default function StudentLesson() {
     )
   }
 
+  // Normal lesson rendering
   const isPaginated = sections.length > 0
   const currentPage = pages[pageIndex] || pages[0]
   const isLastPage = pageIndex === pages.length - 1

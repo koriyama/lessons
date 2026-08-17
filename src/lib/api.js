@@ -181,16 +181,33 @@ export async function saveSections(lessonId, sections) {
 // ---------- activities ----------
 
 export async function listActivities(lessonId) {
+  console.log('🔎 listActivities called with lessonId:', lessonId);
   const { data, error } = await supabase
     .from('activities')
     .select('*')
     .eq('lesson_id', lessonId)
-    .order('position', { ascending: true })
-  assertNoError(error, 'Failed to load activities')
-  return data || []
+    .order('position', { ascending: true });
+  if (error) {
+    console.error('❌ Supabase error in listActivities:', error);
+    throw new Error(`Failed to load activities: ${error.message}`);
+  }
+  console.log('📊 listActivities returned:', data);
+  return data || [];
 }
 
-export async function saveActivities(lessonId, activities) {
+export async function saveActivities(lessonId, activities, force = false) {
+  // Safety check: if we are about to delete all activities, ask for confirmation
+  // unless force is true (used by internal operations like duplication)
+  const existing = await listActivities(lessonId);
+  if (!force && existing.length > 0 && activities.length === 0) {
+    const confirm = window.confirm(
+      `This lesson currently has ${existing.length} activities. Saving now will permanently delete them all.\n\nAre you sure you want to continue?`
+    );
+    if (!confirm) {
+      throw new Error('Save cancelled by user – activities were not deleted.');
+    }
+  }
+
   const { error: deleteError } = await supabase.from('activities').delete().eq('lesson_id', lessonId)
   assertNoError(deleteError, 'Failed to clear old activities')
 

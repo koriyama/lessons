@@ -195,22 +195,15 @@ export default function LessonBuilder() {
   const navigate = useNavigate()
   const isEditing = Boolean(id)
 
-  // Lesson metadata
   const [lesson, setLesson] = useState(null)
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [error, setError] = useState(null)
 
-  // Sections (pages)
   const [sections, setSections] = useState([])
-
-  // Activities (raw list)
   const [activities, setActivities] = useState([])
-
-  // Vocabulary
   const [vocabulary, setVocabulary] = useState([])
 
-  // Files
   const [audioFile, setAudioFile] = useState(null)
   const [imageFiles, setImageFiles] = useState([])
 
@@ -267,13 +260,9 @@ export default function LessonBuilder() {
       
       // 3. Create a map from temporary IDs to real IDs
       const sectionIdMap = {}
-      // We match by index because `sections` and `savedSections` are in the same order.
-      // If a section already had a real ID (from the database), it won't be in the map.
       sections.forEach((oldSection, index) => {
         const newSection = savedSections[index]
         if (newSection) {
-          // If the old ID starts with "temp-", it was a new section.
-          // We map the old ID to the new real ID.
           if (typeof oldSection.id === 'string' && oldSection.id.startsWith('temp-')) {
             sectionIdMap[oldSection.id] = newSection.id
           }
@@ -288,8 +277,9 @@ export default function LessonBuilder() {
         return act
       })
 
-      // 5. Save activities with the updated section IDs
-      await saveActivities(lessonId, updatedActivities)
+      // 5. Save activities (with safety check)
+      // Pass `false` for force – this will trigger a confirm dialog if activities would be deleted
+      await saveActivities(lessonId, updatedActivities, false)
 
       // 6. Save vocabulary
       await saveVocabulary(lessonId, vocabulary)
@@ -449,6 +439,7 @@ export default function LessonBuilder() {
   }
 
   const isPublished = lesson.status === 'published'
+  const activityCount = activities.length
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -470,6 +461,9 @@ export default function LessonBuilder() {
                   {isPublished ? 'Published' : 'Draft'}
                 </span>
               )}
+              <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                {activityCount} activities
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -678,7 +672,7 @@ export default function LessonBuilder() {
         {/* -------- Activities -------- */}
         <section className="card p-6 space-y-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h2 className="text-lg font-display">Activities</h2>
+            <h2 className="text-lg font-display">Activities ({activityCount})</h2>
             <div className="flex gap-2">
               {ACTIVITY_TYPES.map((type) => (
                 <button
@@ -694,6 +688,11 @@ export default function LessonBuilder() {
           <p className="text-xs text-muted">
             Drag activities to reorder. Assign a section to group them into pages.
           </p>
+          {activityCount === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-2 rounded text-sm">
+              ⚠️ No activities yet. Add some using the buttons above.
+            </div>
+          )}
           <div className="space-y-4">
             {activities.map((act, idx) => {
               const Editor = EDITORS[act.type]
