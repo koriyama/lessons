@@ -35,10 +35,31 @@ const STAGE_LABEL = {
 }
 
 // ---------- Memoised Reference Panel (stops the audio blink) ----------
-const ReferencePanel = memo(function ReferencePanel({ lesson, vocabulary, showReading, setShowReading, showVocab, setShowVocab }) {
+const ReferencePanel = memo(function ReferencePanel({
+  lesson,
+  vocabulary,
+  showAudio,
+  setShowAudio,
+  showReading,
+  setShowReading,
+  showVocab,
+  setShowVocab
+}) {
   return (
     <div className="space-y-6">
-      <AudioPlayer src={lesson.audio_url} />
+      {/* ---------- AUDIO (with toggle) ---------- */}
+      {lesson.audio_url && (
+        <div>
+          <button
+            className="flex items-center justify-between w-full text-left mb-2"
+            onClick={() => setShowAudio((v) => !v)}
+          >
+            <span className="rail-label">audio</span>
+            <span className="text-xs text-muted">{showAudio ? 'hide' : 'show'}</span>
+          </button>
+          {showAudio && <AudioPlayer src={lesson.audio_url} />}
+        </div>
+      )}
 
       {lesson.images?.length > 0 && (
         <div className="flex flex-wrap gap-3">
@@ -48,21 +69,21 @@ const ReferencePanel = memo(function ReferencePanel({ lesson, vocabulary, showRe
         </div>
       )}
 
+      {/* ---------- READING (with toggle) ---------- */}
       {lesson.reading_text && (
         <div>
           <button
-            className="flex items-center justify-between w-full text-left mb-2 lg:hidden"
+            className="flex items-center justify-between w-full text-left mb-2"
             onClick={() => setShowReading((v) => !v)}
           >
             <span className="rail-label">reading</span>
             <span className="text-xs text-muted">{showReading ? 'hide' : 'show'}</span>
           </button>
-          <div className={showReading ? 'block' : 'hidden lg:block'}>
-            <ReadingText text={lesson.reading_text} />
-          </div>
+          {showReading && <ReadingText text={lesson.reading_text} />}
         </div>
       )}
 
+      {/* ---------- VOCABULARY (with toggle) ---------- */}
       {vocabulary.length > 0 && (
         <div className="card p-6">
           <button
@@ -105,8 +126,12 @@ export default function StudentLesson() {
   const [answers, setAnswers] = useState({})
   const [result, setResult] = useState(null)
   const [submitting, setSubmitting] = useState(false)
-  const [showVocab, setShowVocab] = useState(true)
+
+  // Toggle states – all default to 'true' (expanded)
+  const [showAudio, setShowAudio] = useState(true)
   const [showReading, setShowReading] = useState(true)
+  const [showVocab, setShowVocab] = useState(true)
+
   const [pageIndex, setPageIndex] = useState(0)
 
   // ---------- 1. Load lesson data (supports ?draft=true) ----------
@@ -310,7 +335,7 @@ export default function StudentLesson() {
     <div className="min-h-screen">
       {/* ---------- HEADER with Action Buttons ---------- */}
       <header className="border-b border-rule bg-surface">
-        <div className="mx-auto max-w-6xl px-6 py-4 flex justify-between items-start">
+        <div className="mx-auto max-w-6xl px-6 py-4 flex flex-wrap justify-between items-start gap-2">
           <div>
             <p className="rail-label mb-1">
               {lesson.level} · English On Demand Lesson
@@ -322,7 +347,7 @@ export default function StudentLesson() {
           <div className="flex gap-3 flex-shrink-0 mt-1">
             <button
               onClick={handleRestart}
-              className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors"
+              className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors min-h-[44px]"
             >
               🔄 Restart
             </button>
@@ -359,6 +384,8 @@ export default function StudentLesson() {
               <ReferencePanel
                 lesson={lesson}
                 vocabulary={vocabulary}
+                showAudio={showAudio}
+                setShowAudio={setShowAudio}
                 showReading={showReading}
                 setShowReading={setShowReading}
                 showVocab={showVocab}
