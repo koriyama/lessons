@@ -353,7 +353,7 @@ export default function StudentLesson() {
           </button>
         </div>
 
-        <div className={hasReference ? 'lg:grid lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
+        <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
           {hasReference && (
             <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0">
               <ReferencePanel

@@ -341,8 +341,8 @@ export default function TeacherDashboard() {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex gap-6">
-            <aside className="w-56 flex-shrink-0">
+          <div className="flex flex-col md:flex-row gap-6">
+            <aside className="w-full md:w-56 md:flex-shrink-0">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sticky top-20">
                 <h2 className="font-semibold text-gray-700 text-sm uppercase tracking-wider mb-3">
                   Folders
