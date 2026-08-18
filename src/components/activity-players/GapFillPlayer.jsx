@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { renderInline } from '../../lib/inlineMarkup.jsx';
 
 export default function GapFillPlayer({ activity, value, onChange, autoFocus = false }) {
   const config = activity.config || {};
@@ -15,7 +16,6 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
   // Parse blanks – supports [[ ]], ____, and ___
   const parts = [];
   let delimiter = null;
-  // Detect which delimiter is used
   if (text.includes('[[') && text.includes(']]')) delimiter = '[[ ]]';
   else if (text.includes('____')) delimiter = '____';
   else if (text.includes('___')) delimiter = '___';
@@ -74,11 +74,16 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
     onChange(combined);
   };
 
+  const preventPaste = (e) => {
+    e.preventDefault();
+    return false;
+  };
+
   // If no blanks, show free-text input
   if (blankCount === 0 || !text || text.trim() === '') {
     return (
       <div className="text-ink">
-        {prompt && <p className="text-sm text-muted mb-2">{prompt}</p>}
+        {prompt && <div className="text-sm text-muted mb-2">{renderInline(prompt)}</div>}
         <input
           ref={inputRef}
           type="text"
@@ -89,6 +94,9 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
             setAnswers([val]);
             onChange(val);
           }}
+          onPaste={preventPaste}
+          onDrop={preventPaste}
+          onContextMenu={preventPaste}
           placeholder="Type your answer here..."
         />
         {!text && <p className="text-xs text-muted mt-1">(No gap text defined – free response)</p>}
@@ -98,7 +106,7 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
 
   return (
     <div className="text-ink">
-      {prompt && <p className="text-sm text-muted mb-2">{prompt}</p>}
+      {prompt && <div className="text-sm text-muted mb-2">{renderInline(prompt)}</div>}
       <div className="leading-relaxed">
         {parts.map((part, idx) => {
           if (part.type === 'text') {
@@ -114,6 +122,9 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
                 className="inline-block w-40 border-b-2 border-ink bg-transparent px-1 mx-1 outline-none focus:border-crest"
                 value={answers[blankIndex] || ''}
                 onChange={(e) => handleBlankChange(blankIndex, e.target.value)}
+                onPaste={preventPaste}
+                onDrop={preventPaste}
+                onContextMenu={preventPaste}
                 placeholder="..."
               />
             );

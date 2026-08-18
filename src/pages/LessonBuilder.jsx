@@ -40,9 +40,10 @@ function GapFillEditor({ activity, onChange, inputRef }) {
     <div className="space-y-2">
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
-        <input
+        <textarea
           ref={inputRef}
           className="field-input"
+          rows={2}
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
           placeholder="e.g. Fill in the missing words:"
@@ -124,9 +125,10 @@ function MultipleChoiceEditor({ activity, onChange, inputRef }) {
     <div className="space-y-3">
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
-        <input
+        <textarea
           ref={inputRef}
           className="field-input"
+          rows={2}
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
           placeholder="e.g. What is the correct answer?"
@@ -184,9 +186,10 @@ function ShortAnswerEditor({ activity, onChange, inputRef }) {
     <div className="space-y-2">
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
-        <input
+        <textarea
           ref={inputRef}
           className="field-input"
+          rows={3}
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
           placeholder="e.g. Write a short paragraph about..."
@@ -214,7 +217,7 @@ function ReasoningEditor({ activity, onChange, inputRef }) {
         <textarea
           ref={inputRef}
           className="field-input"
-          rows={2}
+          rows={3}
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
           placeholder="e.g. Explain the author's argument in your own words."
@@ -260,7 +263,6 @@ export default function LessonBuilder() {
   const inputRefs = useRef({})
   const focusedRef = useRef(new Set())
 
-  // ---------- Load existing lesson ----------
   useEffect(() => {
     if (!id) {
       setLesson({ title: '', level: 'B1', reading_text: '', audio_url: null, images: [] })
@@ -281,7 +283,6 @@ export default function LessonBuilder() {
     load()
   }, [id])
 
-  // ---------- Auto‑focus ----------
   useEffect(() => {
     if (activities.length > 0) {
       const lastActivity = activities[activities.length - 1]
@@ -299,7 +300,6 @@ export default function LessonBuilder() {
     }
   }, [activities])
 
-  // ---------- Save ----------
   async function handleSave(shouldPublish = false) {
     setSaving(true)
     setError(null)
@@ -378,7 +378,6 @@ export default function LessonBuilder() {
     await handleSave(true)
   }
 
-  // ---------- Upload ----------
   async function handleAudioUpload(file) {
     if (!file) return
     try {
@@ -404,7 +403,6 @@ export default function LessonBuilder() {
     }
   }
 
-  // ---------- Activity CRUD ----------
   function addActivity(type) {
     const defaultSectionId = sections.length > 0 ? sections[0].id : null
     let newActivity = {
@@ -443,7 +441,6 @@ export default function LessonBuilder() {
     setActivities(newActivities)
   }
 
-  // ---------- Vocabulary CRUD ----------
   function addVocabularyItem() {
     setVocabulary([...vocabulary, { id: `temp-${Date.now()}`, term: '', definition: '', example: '' }])
   }
@@ -458,7 +455,6 @@ export default function LessonBuilder() {
     setVocabulary(vocabulary.filter((_, i) => i !== index))
   }
 
-  // ---------- Section CRUD ----------
   function addSection() {
     setSections([...sections, { id: `temp-${Date.now()}-${Math.random()}`, title: '', intro_text: '' }])
   }
@@ -493,7 +489,7 @@ export default function LessonBuilder() {
         audio_url: lesson.audio_url || null,
         images: lesson.images || []
       },
-      sections: sections.map(({ id, ...rest }) => rest), // remove temp/real id
+      sections: sections.map(({ id, ...rest }) => rest),
       activities: activities.map(({ id, ...rest }) => rest),
       vocabulary: vocabulary.map(({ id, ...rest }) => rest)
     }
@@ -523,7 +519,6 @@ export default function LessonBuilder() {
       try {
         const data = JSON.parse(event.target.result)
         if (!data.lesson) throw new Error('Invalid lesson file: missing "lesson"')
-        // Replace state
         setLesson({
           title: data.lesson.title || 'Untitled',
           level: data.lesson.level || 'B1',
@@ -531,14 +526,12 @@ export default function LessonBuilder() {
           audio_url: data.lesson.audio_url || null,
           images: data.lesson.images || []
         })
-        // Re‑generate temp IDs for sections, activities, vocabulary
         const newSections = (data.sections || []).map((s, i) => ({
           id: `temp-${Date.now()}-${i}-${Math.random()}`,
           title: s.title || '',
           intro_text: s.intro_text || ''
         }))
         setSections(newSections)
-        // Map old section IDs to new ones for activities
         const oldToNew = {}
         ;(data.sections || []).forEach((old, i) => {
           oldToNew[old.id] = newSections[i].id
@@ -559,20 +552,12 @@ export default function LessonBuilder() {
           example: v.example || ''
         }))
         setVocabulary(newVocabulary)
-        // Clear any previous error
         setError(null)
-        // Navigate to builder without id (new lesson) if not editing, else keep id? Better to clear id by navigating to /builder
-        if (isEditing) {
-          // If editing, we replace the current data but keep the same lesson id – user can save to overwrite or save as new.
-          // We'll keep the id as is, but the data is replaced. Saving will update the existing lesson.
-          // But we removed the id from sections etc., so it's safe.
-        }
       } catch (err) {
         setError('Failed to import lesson: ' + err.message)
       }
     }
     reader.readAsText(file)
-    // Reset input so the same file can be re-uploaded
     e.target.value = ''
   }
 
@@ -625,38 +610,14 @@ export default function LessonBuilder() {
               </span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                className="btn-secondary text-sm"
-                onClick={handleExport}
-              >
-                📤 Export
-              </button>
-              <button
-                className="btn-secondary text-sm"
-                onClick={handleImportClick}
-              >
-                📥 Import
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleImportFile}
-                className="hidden"
-              />
-              <button
-                className="btn-secondary text-sm"
-                onClick={() => handleSave(false)}
-                disabled={saving}
-              >
+              <button className="btn-secondary text-sm" onClick={handleExport}>📤 Export</button>
+              <button className="btn-secondary text-sm" onClick={handleImportClick}>📥 Import</button>
+              <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+              <button className="btn-secondary text-sm" onClick={() => handleSave(false)} disabled={saving}>
                 {saving ? 'Saving…' : 'Save Draft'}
               </button>
               {!isPublished ? (
-                <button
-                  className="btn-primary text-sm"
-                  onClick={handlePublish}
-                  disabled={publishing}
-                >
+                <button className="btn-primary text-sm" onClick={handlePublish} disabled={publishing}>
                   {publishing ? 'Publishing…' : 'Publish'}
                 </button>
               ) : (

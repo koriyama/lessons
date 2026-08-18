@@ -1,23 +1,25 @@
-const SUBTYPE_HINTS = {
-  claim: 'State the claim clearly, in your own words.',
-  evidence: 'Point to the specific evidence the text uses, and say what it supports.',
-  assumption: 'Name the assumption, then explain why the text depends on it.',
-  relationship: 'Explain how the two ideas connect — cause, contrast, support, or condition.'
-}
+import { renderInline } from '../../lib/inlineMarkup.jsx';
 
 export default function ReasoningPlayer({ activity, value, onChange }) {
-  const hint = SUBTYPE_HINTS[activity.config?.subtype] || ''
+  const prompt = activity.prompt || 'Explain your reasoning:';
+
+  const preventPaste = (e) => {
+    e.preventDefault();
+    return false;
+  };
+
   return (
-    <div>
-      <p className="leading-relaxed mb-1">{activity.prompt}</p>
-      {hint && <p className="text-xs text-muted mb-2">{hint}</p>}
+    <div className="text-ink space-y-2">
+      {prompt && <div className="text-sm text-muted">{renderInline(prompt)}</div>}
       <textarea
-        className="field-input"
-        rows={4}
+        className="w-full border-b border-ink bg-transparent px-1 py-1 outline-none focus:border-crest resize-y min-h-[120px]"
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Support your answer with reference to the text."
+        onPaste={preventPaste}
+        onDrop={preventPaste}
+        onContextMenu={preventPaste}
+        placeholder="Type your reasoning here..."
       />
     </div>
-  )
+  );
 }
