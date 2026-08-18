@@ -258,27 +258,28 @@ export default function LessonBuilder() {
       // 2. Save sections and get the result (which includes real IDs)
       const savedSections = await saveSections(lessonId, sections)
       
-      // 3. Create a map from temporary IDs to real IDs
+      // 3. Build a map from each old section ID (temp or real) to the new real ID
+      //    based on the position (index) in the sections array.
       const sectionIdMap = {}
       sections.forEach((oldSection, index) => {
         const newSection = savedSections[index]
         if (newSection) {
-          if (typeof oldSection.id === 'string' && oldSection.id.startsWith('temp-')) {
-            sectionIdMap[oldSection.id] = newSection.id
-          }
+          sectionIdMap[oldSection.id] = newSection.id
         }
       })
 
-      // 4. Update activities' section_id if they refer to a mapped temp ID
+      // 4. Update activities' section_id using the map
       const updatedActivities = activities.map(act => {
-        if (act.section_id && sectionIdMap[act.section_id]) {
+        if (!act.section_id) return act
+        // If section_id exists in the map, use the new ID
+        if (sectionIdMap[act.section_id]) {
           return { ...act, section_id: sectionIdMap[act.section_id] }
         }
-        return act
+        // Otherwise, the section no longer exists, set to null
+        return { ...act, section_id: null }
       })
 
-      // 5. Save activities (with safety check)
-      // Pass `false` for force – this will trigger a confirm dialog if activities would be deleted
+      // 5. Save activities (force=false – the confirmation dialog is removed)
       await saveActivities(lessonId, updatedActivities, false)
 
       // 6. Save vocabulary

@@ -136,7 +136,8 @@ export async function duplicateLesson(id) {
       activities.map(({ id: _drop, lesson_id: _drop2, section_id, ...rest }) => ({
         ...rest,
         section_id: section_id ? sectionIdMap[section_id] ?? null : null
-      }))
+      })),
+      true // force = true to skip any confirmation
     )
   }
   if (vocabulary.length) {
@@ -196,18 +197,7 @@ export async function listActivities(lessonId) {
 }
 
 export async function saveActivities(lessonId, activities, force = false) {
-  // Safety check: if we are about to delete all activities, ask for confirmation
-  // unless force is true (used by internal operations like duplication)
-  const existing = await listActivities(lessonId);
-  if (!force && existing.length > 0 && activities.length === 0) {
-    const confirm = window.confirm(
-      `This lesson currently has ${existing.length} activities. Saving now will permanently delete them all.\n\nAre you sure you want to continue?`
-    );
-    if (!confirm) {
-      throw new Error('Save cancelled by user – activities were not deleted.');
-    }
-  }
-
+  // Delete all existing activities for this lesson
   const { error: deleteError } = await supabase.from('activities').delete().eq('lesson_id', lessonId)
   assertNoError(deleteError, 'Failed to clear old activities')
 

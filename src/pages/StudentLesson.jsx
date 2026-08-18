@@ -135,41 +135,28 @@ export default function StudentLesson() {
   useEffect(() => {
     ;(async () => {
       try {
-        console.log('🔍 StudentLesson: Loading lesson with slug:', slug, 'draft preview:', isDraftPreview);
         const fetchLesson = isDraftPreview ? getDraftLessonBySlug : getLessonBySlug
         const l = await fetchLesson(slug)
-        console.log('✅ StudentLesson: Lesson loaded:', l);
         setLesson(l)
-
-        console.log('📡 StudentLesson: Fetching sections for lesson ID:', l.id);
         const sectionsData = await listSections(l.id)
-        console.log('📦 Sections loaded:', sectionsData);
         setSections(sectionsData)
-
-        console.log('📡 StudentLesson: Fetching activities for lesson ID:', l.id);
         const activitiesData = await listActivities(l.id)
-        console.log('📦 Activities loaded:', activitiesData);
         setActivities(activitiesData)
-
-        console.log('📡 StudentLesson: Fetching vocabulary for lesson ID:', l.id);
         const vocabData = await listVocabulary(l.id)
-        console.log('📦 Vocabulary loaded:', vocabData);
         setVocabulary(vocabData)
-
-        // Check if activities are empty
         if (!activitiesData || activitiesData.length === 0) {
           setNoActivitiesWarning(true)
         } else {
           setNoActivitiesWarning(false)
         }
       } catch (e) {
-        console.error('❌ StudentLesson: Error loading lesson data:', e)
+        console.error(e)
         setError('This lesson link is not available. Check the link with your teacher.')
       }
     })()
   }, [slug, isDraftPreview, reloadAttempt])
 
-  // ---------- PAGES (sections + activities) ----------
+  // ---------- PAGES ----------
   const pages = useMemo(() => {
     if (sections.length === 0) {
       return [{ title: null, intro_text: null, activities }]
@@ -184,7 +171,7 @@ export default function StudentLesson() {
     return grouped
   }, [sections, activities])
 
-  // ---------- PROGRESS (auto-save) ----------
+  // ---------- PROGRESS ----------
   const { progress, loading: progressLoading, save } = useLessonProgress(lesson?.id, studentName);
 
   useEffect(() => {
@@ -246,7 +233,7 @@ export default function StudentLesson() {
       save(0, {})
       setResult({ score, maxAutoScore })
     } catch (e) {
-      console.error('Submission error:', e)
+      console.error(e)
       setError(e.message)
     } finally {
       setSubmitting(false)
@@ -267,47 +254,23 @@ export default function StudentLesson() {
       handleSubmit()
     } else {
       setPageIndex((p) => p + 1)
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-      }, 100)
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100)
     }
   }
 
   function goBack() {
     setPageIndex((p) => Math.max(0, p - 1))
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }, 100)
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100)
   }
 
-  // Reload activities manually
   function handleReloadActivities() {
     setReloadAttempt(prev => prev + 1);
   }
 
   // ---------- RENDER ----------
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="card p-8 max-w-md text-center">
-          <p className="text-crest">{error}</p>
-          <p className="text-xs text-muted mt-2">
-            Please check the console (F12) for more details.
-          </p>
-        </div>
-      </div>
-    )
-  }
+  if (error) return <div className="min-h-screen flex items-center justify-center p-6"><div className="card p-8 max-w-md text-center"><p className="text-crest">{error}</p></div></div>
+  if (!lesson) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted">Loading lesson…</p></div>
 
-  if (!lesson) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading lesson…</p>
-      </div>
-    )
-  }
-
-  // If student has not entered name yet
   if (!submissionId) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -320,45 +283,26 @@ export default function StudentLesson() {
             <p className="mt-2">Please use the <strong>exact same name</strong> you used before to continue your saved lesson.</p>
             <p>以前使用したものと<strong>まったく同じ名前</strong>を入力して、続きを再開してください。</p>
           </div>
-          <input
-            className="field-input"
-            placeholder="Full name"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-            autoFocus
-          />
-          <button className="btn-primary w-full" type="submit">
-            Begin lesson
-          </button>
+          <input className="field-input" placeholder="Full name" value={studentName} onChange={(e) => setStudentName(e.target.value)} autoFocus />
+          <button className="btn-primary w-full" type="submit">Begin lesson</button>
         </form>
       </div>
     )
   }
 
-  // If we have a submissionId but no activities, show a warning with reload button
   if (noActivitiesWarning) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card p-8 max-w-md text-center">
           <p className="text-amber-600 text-lg">⚠️ No activities found</p>
-          <p className="text-sm text-muted mt-2">
-            This lesson doesn't have any activities. Please contact your teacher.
-          </p>
-          <button
-            onClick={handleReloadActivities}
-            className="btn-secondary mt-4"
-          >
-            🔄 Reload Activities
-          </button>
-          <p className="text-xs text-muted mt-4">
-            If you are the teacher, try saving the lesson again in the builder.
-          </p>
+          <p className="text-sm text-muted mt-2">This lesson doesn't have any activities. Please contact your teacher.</p>
+          <button onClick={handleReloadActivities} className="btn-secondary mt-4">🔄 Reload Activities</button>
+          <p className="text-xs text-muted mt-4">If you are the teacher, try saving the lesson again in the builder.</p>
         </div>
       </div>
     )
   }
 
-  // If result (lesson completed)
   if (result) {
     const hasAuto = result.maxAutoScore > 0
     return (
@@ -367,20 +311,13 @@ export default function StudentLesson() {
           <p className="text-forest text-3xl">✓</p>
           <h1 className="text-2xl font-display">Lesson complete</h1>
           <p className="text-muted text-sm">Thank you, {studentName}. Your responses have been recorded.</p>
-          {hasAuto && (
-            <p className="font-mono text-sm">
-              Auto-marked score: {result.score} / {result.maxAutoScore}
-            </p>
-          )}
-          <p className="text-xs text-muted">
-            Short-answer and reasoning responses will be reviewed by your teacher.
-          </p>
+          {hasAuto && <p className="font-mono text-sm">Auto-marked score: {result.score} / {result.maxAutoScore}</p>}
+          <p className="text-xs text-muted">Short-answer and reasoning responses will be reviewed by your teacher.</p>
         </div>
       </div>
     )
   }
 
-  // Normal lesson rendering
   const isPaginated = sections.length > 0
   const currentPage = pages[pageIndex] || pages[0]
   const isLastPage = pageIndex === pages.length - 1
@@ -397,17 +334,10 @@ export default function StudentLesson() {
               {isDraftPreview && <span className="ml-2 text-orange-500 font-medium">(DRAFT PREVIEW)</span>}
             </p>
             <div className="flex gap-2 flex-shrink-0">
-              <button
-                onClick={handleRestart}
-                className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors min-h-[44px] flex items-center"
-              >
+              <button onClick={handleRestart} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors min-h-[44px] flex items-center">
                 🔄 Restart
               </button>
-              <SaveExitButton
-                onSave={() => save(pageIndex, answers)}
-                isLoading={progressLoading}
-                slug={slug}
-              />
+              <SaveExitButton onSave={() => save(pageIndex, answers)} isLoading={progressLoading} slug={slug} />
             </div>
           </div>
           <h1 className="text-xl sm:text-2xl font-display mt-1 leading-tight">{lesson.title}</h1>
@@ -417,30 +347,16 @@ export default function StudentLesson() {
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
           {isPaginated && pageIndex > 0 ? (
-            <button className="btn-secondary text-sm" onClick={goBack}>
-              ← Back
-            </button>
-          ) : (
-            <span />
-          )}
-          <span className="text-sm text-gray-400">
-            {isPaginated && `Page ${pageIndex + 1} of ${pages.length}`}
-          </span>
+            <button className="btn-secondary text-sm" onClick={goBack}>← Back</button>
+          ) : <span />}
+          <span className="text-sm text-gray-400">{isPaginated && `Page ${pageIndex + 1} of ${pages.length}`}</span>
           <button className="btn-primary text-sm" onClick={goNext} disabled={submitting}>
             {isLastPage ? (submitting ? 'Submitting…' : 'Submit lesson') : 'Next →'}
           </button>
         </div>
 
-        {isPaginated && currentPage.title && (
-          <div className="mb-4">
-            <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
-            {currentPage.intro_text && (
-              <p className="text-sm text-muted">{renderInline(currentPage.intro_text, 'sec-intro')}</p>
-            )}
-          </div>
-        )}
-
         <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
+          {/* LEFT COLUMN – Reference Panel (reading, audio, vocab) */}
           {hasReference && (
             <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0">
               <ReferencePanel
@@ -456,7 +372,17 @@ export default function StudentLesson() {
             </div>
           )}
 
+          {/* RIGHT COLUMN – Section title + intro + activities */}
           <div>
+            {isPaginated && currentPage.title && (
+              <div className="mb-4">
+                <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
+                {currentPage.intro_text && (
+                  <p className="text-sm text-muted">{renderInline(currentPage.intro_text, 'sec-intro')}</p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-4">
               {currentPage.activities.map((activity) => {
                 const Player = PLAYERS[activity.type]
@@ -478,12 +404,8 @@ export default function StudentLesson() {
 
             <div className="flex justify-between pt-6">
               {isPaginated && pageIndex > 0 ? (
-                <button className="btn-secondary" onClick={goBack}>
-                  ← Back
-                </button>
-              ) : (
-                <span />
-              )}
+                <button className="btn-secondary" onClick={goBack}>← Back</button>
+              ) : <span />}
               <button className="btn-primary" onClick={goNext} disabled={submitting}>
                 {isLastPage ? (submitting ? 'Submitting…' : 'Submit lesson') : 'Next →'}
               </button>

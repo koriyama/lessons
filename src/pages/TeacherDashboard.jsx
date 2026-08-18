@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { 
+import {
   listLessonsWithStats,
   listFolders,
   createFolder,
@@ -280,17 +280,19 @@ export default function TeacherDashboard() {
   }
 
   function handleCopyLink(slug) {
+    // Build the correct student lesson URL using the current origin
     const url = `${window.location.origin}/lesson/${slug}`
     navigator.clipboard.writeText(url).then(() => {
-      alert('Student link copied to clipboard!')
+      alert('Student lesson link copied to clipboard!')
     }).catch(() => {
+      // Fallback for older browsers
       const textarea = document.createElement('textarea')
       textarea.value = url
       document.body.appendChild(textarea)
       textarea.select()
       document.execCommand('copy')
       document.body.removeChild(textarea)
-      alert('Student link copied to clipboard!')
+      alert('Student lesson link copied to clipboard!')
     })
   }
 
@@ -563,7 +565,6 @@ export default function TeacherDashboard() {
                             📋 Copy Link
                           </button>
 
-                          {/* ✅ EDIT BUTTON - RESTORED */}
                           <Link
                             to={`/builder/${lesson.id}`}
                             className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap font-medium"
@@ -572,7 +573,7 @@ export default function TeacherDashboard() {
                           </Link>
 
                           <Link
-                            to={`/lesson/${lesson.share_slug}`}
+                            to={`/lesson/${lesson.share_slug}?draft=true`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
