@@ -6,16 +6,21 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
   const prompt = activity.prompt || 'Fill in the blanks';
   const inputRef = useRef(null);
 
-  // Focus the input when autoFocus is true and the component mounts
   useEffect(() => {
     if (autoFocus && inputRef.current) {
       inputRef.current.focus();
     }
   }, [autoFocus]);
 
-  // Parse blanks
+  // Parse blanks – supports [[ ]], ____, and ___
   const parts = [];
-  if (text.includes('[[') && text.includes(']]')) {
+  let delimiter = null;
+  // Detect which delimiter is used
+  if (text.includes('[[') && text.includes(']]')) delimiter = '[[ ]]';
+  else if (text.includes('____')) delimiter = '____';
+  else if (text.includes('___')) delimiter = '___';
+
+  if (delimiter === '[[ ]]') {
     const regex = /\[\[(.*?)\]\]/g;
     let match;
     let lastIndex = 0;
@@ -28,8 +33,17 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
     if (lastIndex < text.length) {
       parts.push({ type: 'text', content: text.slice(lastIndex) });
     }
-  } else if (text.includes('____')) {
+  } else if (delimiter === '____') {
     const segs = text.split('____');
+    parts.push({ type: 'text', content: segs[0] });
+    for (let i = 1; i < segs.length; i++) {
+      parts.push({ type: 'blank', content: '' });
+      if (i < segs.length - 1 || segs[i]) {
+        parts.push({ type: 'text', content: segs[i] });
+      }
+    }
+  } else if (delimiter === '___') {
+    const segs = text.split('___');
     parts.push({ type: 'text', content: segs[0] });
     for (let i = 1; i < segs.length; i++) {
       parts.push({ type: 'blank', content: '' });
@@ -82,7 +96,6 @@ export default function GapFillPlayer({ activity, value, onChange, autoFocus = f
     );
   }
 
-  // Render with blanks – focus the first input if autoFocus
   return (
     <div className="text-ink">
       {prompt && <p className="text-sm text-muted mb-2">{prompt}</p>}

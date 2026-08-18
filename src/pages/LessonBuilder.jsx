@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   getLesson,
@@ -19,14 +19,29 @@ import AudioPlayer from '../components/AudioPlayer.jsx'
 import ReadingText from '../components/ReadingText.jsx'
 
 // ---- Activity Editor Components ----
-function GapFillEditor({ activity, onChange }) {
+function GapFillEditor({ activity, onChange, inputRef }) {
   const config = activity.config || {}
   const updateConfig = (patch) => onChange({ ...activity, config: { ...config, ...patch } })
+
+  const [answerString, setAnswerString] = useState(
+    config.answers ? config.answers.join(', ') : ''
+  )
+
+  useEffect(() => {
+    setAnswerString(config.answers ? config.answers.join(', ') : '')
+  }, [config.answers])
+
+  const handleAnswerBlur = () => {
+    const arr = answerString.split(',').map(s => s.trim()).filter(Boolean)
+    updateConfig({ answers: arr })
+  }
+
   return (
     <div className="space-y-2">
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
         <input
+          ref={inputRef}
           className="field-input"
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
@@ -40,37 +55,78 @@ function GapFillEditor({ activity, onChange }) {
           rows={3}
           value={config.text || ''}
           onChange={(e) => updateConfig({ text: e.target.value })}
-          placeholder='Use [[curly brackets]] for blanks, e.g. "The [[cat]] sat on the [[mat]]."'
+          placeholder='Use [[curly brackets]], ____, or ___ for blanks, e.g. "The ___ sat on the ___."'
         />
         <p className="text-xs text-muted mt-1">
-          Use <code className="bg-gray-100 px-1">[[ ]]</code> around the missing word.
+          Use <code className="bg-gray-100 px-1">[[ ]]</code>, <code className="bg-gray-100 px-1">____</code>, or <code className="bg-gray-100 px-1">___</code> around the missing word(s).
         </p>
       </div>
       <div>
-        <label className="text-xs font-medium text-gray-600">Answer key (one per blank)</label>
+        <label className="text-xs font-medium text-gray-600">Answer key (one per blank, comma separated)</label>
         <input
           className="field-input"
-          value={config.answers ? config.answers.join(', ') : ''}
-          onChange={(e) => updateConfig({ answers: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="cat, mat"
+          value={answerString}
+          onChange={(e) => setAnswerString(e.target.value)}
+          onBlur={handleAnswerBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleAnswerBlur()
+            }
+          }}
+          placeholder="great, trivialised|trivialized, New York|New York City"
         />
+        <p className="text-xs text-muted mt-1">
+          For each blank, you can list multiple acceptable answers separated by a pipe (<code className="bg-gray-100 px-1">|</code>).
+          Spaces around the pipe are ignored. Multi‑word answers are supported.
+          Example: <code className="bg-gray-100 px-1">trivialised | trivialized</code> accepts both spellings;
+          <code className="bg-gray-100 px-1">New York | New York City</code> accepts either phrase.
+        </p>
       </div>
     </div>
   )
 }
 
-function MultipleChoiceEditor({ activity, onChange }) {
+function MultipleChoiceEditor({ activity, onChange, inputRef }) {
   const config = activity.config || {}
   const updateConfig = (patch) => onChange({ ...activity, config: { ...config, ...patch } })
 
   const options = config.options || []
-  const correctIndex = config.correctIndex
+  const correctIndex = config.correctIndex !== undefined ? config.correctIndex : -1
+
+  const addOption = () => {
+    const newOptions = [...options, '']
+    updateConfig({ options: newOptions })
+  }
+
+  const removeOption = (index) => {
+    if (options.length <= 1) return
+    const newOptions = options.filter((_, i) => i !== index)
+    let newCorrectIndex = correctIndex
+    if (correctIndex === index) newCorrectIndex = -1
+    else if (correctIndex > index) newCorrectIndex = correctIndex - 1
+    updateConfig({ options: newOptions, correctIndex: newCorrectIndex })
+  }
+
+  const updateOption = (index, value) => {
+    const newOptions = [...options]
+    newOptions[index] = value
+    updateConfig({ options: newOptions })
+  }
+
+  const selectCorrect = (index) => {
+    updateConfig({ correctIndex: index })
+  }
+
+  // Unique radio group name per activity
+  const radioName = `correct-option-${activity.id}`
 
   return (
     <div className="space-y-3">
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
         <input
+          ref={inputRef}
           className="field-input"
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
@@ -83,22 +139,24 @@ function MultipleChoiceEditor({ activity, onChange }) {
           {options.map((opt, i) => (
             <div key={i} className="flex items-center gap-2">
               <input
+                type="radio"
+                name={radioName}
+                checked={correctIndex === i}
+                onChange={() => selectCorrect(i)}
+                className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+              />
+              <input
                 className="field-input flex-1"
                 value={opt}
-                onChange={(e) => {
-                  const newOptions = [...options]
-                  newOptions[i] = e.target.value
-                  updateConfig({ options: newOptions })
-                }}
+                onChange={(e) => updateOption(i, e.target.value)}
                 placeholder={`Option ${i + 1}`}
               />
               <button
                 type="button"
                 className="text-xs text-red-500 hover:text-red-700"
-                onClick={() => {
-                  const newOptions = options.filter((_, idx) => idx !== i)
-                  updateConfig({ options: newOptions, correctIndex: correctIndex === i ? undefined : correctIndex > i ? correctIndex - 1 : correctIndex })
-                }}
+                onClick={() => removeOption(i)}
+                disabled={options.length <= 1}
+                title={options.length <= 1 ? "Must have at least one option" : "Remove option"}
               >
                 ×
               </button>
@@ -107,30 +165,20 @@ function MultipleChoiceEditor({ activity, onChange }) {
           <button
             type="button"
             className="text-xs text-blue-600 hover:underline"
-            onClick={() => updateConfig({ options: [...options, ''] })}
+            onClick={addOption}
           >
             + Add option
           </button>
         </div>
-      </div>
-      <div>
-        <label className="text-xs font-medium text-gray-600">Correct answer</label>
-        <select
-          className="field-input"
-          value={correctIndex !== undefined ? correctIndex : ''}
-          onChange={(e) => updateConfig({ correctIndex: e.target.value !== '' ? parseInt(e.target.value) : undefined })}
-        >
-          <option value="">— select —</option>
-          {options.map((opt, i) => (
-            <option key={i} value={i}>{opt || `Option ${i + 1}`}</option>
-          ))}
-        </select>
+        <p className="text-xs text-muted mt-1">
+          Select the correct answer by clicking the circle next to the option.
+        </p>
       </div>
     </div>
   )
 }
 
-function ShortAnswerEditor({ activity, onChange }) {
+function ShortAnswerEditor({ activity, onChange, inputRef }) {
   const config = activity.config || {}
   const updateConfig = (patch) => onChange({ ...activity, config: { ...config, ...patch } })
   return (
@@ -138,6 +186,7 @@ function ShortAnswerEditor({ activity, onChange }) {
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
         <input
+          ref={inputRef}
           className="field-input"
           value={activity.prompt || ''}
           onChange={(e) => onChange({ ...activity, prompt: e.target.value })}
@@ -158,12 +207,13 @@ function ShortAnswerEditor({ activity, onChange }) {
   )
 }
 
-function ReasoningEditor({ activity, onChange }) {
+function ReasoningEditor({ activity, onChange, inputRef }) {
   return (
     <div className="space-y-2">
       <div>
         <label className="text-xs font-medium text-gray-600">Prompt</label>
         <textarea
+          ref={inputRef}
           className="field-input"
           rows={2}
           value={activity.prompt || ''}
@@ -207,7 +257,10 @@ export default function LessonBuilder() {
   const [audioFile, setAudioFile] = useState(null)
   const [imageFiles, setImageFiles] = useState([])
 
-  // ---------- Load existing lesson ----------
+  const activitiesContainerRef = useRef(null)
+  const inputRefs = useRef({})
+  const focusedRef = useRef(new Set())
+
   useEffect(() => {
     if (!id) {
       setLesson({ title: '', level: 'B1', reading_text: '', audio_url: null, images: [] })
@@ -228,12 +281,27 @@ export default function LessonBuilder() {
     load()
   }, [id])
 
-  // ---------- Save handlers ----------
+  useEffect(() => {
+    if (activities.length > 0) {
+      const lastActivity = activities[activities.length - 1]
+      if (lastActivity.id && typeof lastActivity.id === 'string' && lastActivity.id.startsWith('temp-') && !focusedRef.current.has(lastActivity.id)) {
+        const ref = inputRefs.current[lastActivity.id]
+        if (ref) {
+          ref.focus()
+          focusedRef.current.add(lastActivity.id)
+          const element = ref.closest('.activity-card')
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }
+      }
+    }
+  }, [activities])
+
   async function handleSave(shouldPublish = false) {
     setSaving(true)
     setError(null)
     try {
-      // 1. Save lesson metadata
       let savedLesson
       if (isEditing) {
         savedLesson = await updateLesson(id, {
@@ -254,12 +322,8 @@ export default function LessonBuilder() {
       }
 
       const lessonId = savedLesson.id
-
-      // 2. Save sections and get the result (which includes real IDs)
       const savedSections = await saveSections(lessonId, sections)
       
-      // 3. Build a map from each old section ID (temp or real) to the new real ID
-      //    based on the position (index) in the sections array.
       const sectionIdMap = {}
       sections.forEach((oldSection, index) => {
         const newSection = savedSections[index]
@@ -268,31 +332,23 @@ export default function LessonBuilder() {
         }
       })
 
-      // 4. Update activities' section_id using the map
       const updatedActivities = activities.map(act => {
         if (!act.section_id) return act
-        // If section_id exists in the map, use the new ID
         if (sectionIdMap[act.section_id]) {
           return { ...act, section_id: sectionIdMap[act.section_id] }
         }
-        // Otherwise, the section no longer exists, set to null
         return { ...act, section_id: null }
       })
 
-      // 5. Save activities (force=false – the confirmation dialog is removed)
       await saveActivities(lessonId, updatedActivities, false)
-
-      // 6. Save vocabulary
       await saveVocabulary(lessonId, vocabulary)
 
-      // 7. If publishing, set status
       if (shouldPublish) {
         await setLessonStatus(lessonId, 'published')
       } else if (isEditing) {
         await setLessonStatus(lessonId, 'draft')
       }
 
-      // 8. Navigate or reload
       if (shouldPublish) {
         navigate('/')
       } else if (!isEditing) {
@@ -320,7 +376,6 @@ export default function LessonBuilder() {
     await handleSave(true)
   }
 
-  // ---------- Upload handlers ----------
   async function handleAudioUpload(file) {
     if (!file) return
     try {
@@ -346,15 +401,21 @@ export default function LessonBuilder() {
     }
   }
 
-  // ---------- Activity CRUD ----------
   function addActivity(type) {
-    const newActivity = {
+    const defaultSectionId = sections.length > 0 ? sections[0].id : null
+    let newActivity = {
       id: `temp-${Date.now()}-${Math.random()}`,
       type,
       prompt: '',
       config: {},
       points: 1,
-      section_id: null
+      section_id: defaultSectionId
+    }
+    if (type === 'multiple_choice') {
+      newActivity.config = {
+        options: ['', '', ''],
+        correctIndex: -1
+      }
     }
     setActivities([...activities, newActivity])
   }
@@ -366,8 +427,7 @@ export default function LessonBuilder() {
   }
 
   function removeActivity(index) {
-    const newActivities = activities.filter((_, i) => i !== index)
-    setActivities(newActivities)
+    setActivities(activities.filter((_, i) => i !== index))
   }
 
   function moveActivity(index, direction) {
@@ -379,7 +439,6 @@ export default function LessonBuilder() {
     setActivities(newActivities)
   }
 
-  // ---------- Vocabulary CRUD ----------
   function addVocabularyItem() {
     setVocabulary([...vocabulary, { id: `temp-${Date.now()}`, term: '', definition: '', example: '' }])
   }
@@ -394,7 +453,6 @@ export default function LessonBuilder() {
     setVocabulary(vocabulary.filter((_, i) => i !== index))
   }
 
-  // ---------- Section CRUD ----------
   function addSection() {
     setSections([...sections, { id: `temp-${Date.now()}-${Math.random()}`, title: '', intro_text: '' }])
   }
@@ -444,7 +502,6 @@ export default function LessonBuilder() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -500,7 +557,6 @@ export default function LessonBuilder() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-        {/* -------- Lesson Metadata -------- */}
         <section className="card p-6 space-y-4">
           <h2 className="text-lg font-display">Lesson Details</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -599,7 +655,6 @@ export default function LessonBuilder() {
           </div>
         </section>
 
-        {/* -------- Sections -------- */}
         <section className="card p-6 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-display">Sections (Pages)</h2>
@@ -670,11 +725,12 @@ export default function LessonBuilder() {
           </div>
         </section>
 
-        {/* -------- Activities -------- */}
-        <section className="card p-6 space-y-4">
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h2 className="text-lg font-display">Activities ({activityCount})</h2>
-            <div className="flex gap-2">
+        <section className="card p-6 space-y-4" ref={activitiesContainerRef}>
+          <div className="sticky top-16 z-10 bg-white -mx-6 px-6 py-3 border-b border-gray-200 shadow-sm flex flex-wrap justify-between items-center gap-2">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-display">Activities ({activityCount})</h2>
+            </div>
+            <div className="flex gap-2 flex-wrap">
               {ACTIVITY_TYPES.map((type) => (
                 <button
                   key={type.value}
@@ -686,7 +742,8 @@ export default function LessonBuilder() {
               ))}
             </div>
           </div>
-          <p className="text-xs text-muted">
+
+          <p className="text-xs text-muted mt-2">
             Drag activities to reorder. Assign a section to group them into pages.
           </p>
           {activityCount === 0 && (
@@ -697,8 +754,15 @@ export default function LessonBuilder() {
           <div className="space-y-4">
             {activities.map((act, idx) => {
               const Editor = EDITORS[act.type]
+              const setInputRef = (el) => {
+                if (el) {
+                  inputRefs.current[act.id] = el
+                } else {
+                  delete inputRefs.current[act.id]
+                }
+              }
               return (
-                <div key={act.id || idx} className="border border-gray-200 rounded p-4 bg-white">
+                <div key={act.id || idx} className="border border-gray-200 rounded p-4 bg-white activity-card">
                   <div className="flex justify-between items-start gap-4">
                     <div className="flex-1 space-y-3">
                       <div className="flex flex-wrap items-center gap-3">
@@ -731,7 +795,11 @@ export default function LessonBuilder() {
                           />
                         </label>
                       </div>
-                      <Editor activity={act} onChange={(updated) => updateActivity(idx, updated)} />
+                      <Editor
+                        activity={act}
+                        onChange={(updated) => updateActivity(idx, updated)}
+                        inputRef={setInputRef}
+                      />
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       {idx > 0 && (
@@ -770,7 +838,6 @@ export default function LessonBuilder() {
           </div>
         </section>
 
-        {/* -------- Vocabulary -------- */}
         <section className="card p-6 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-display">Vocabulary Support</h2>
@@ -812,7 +879,6 @@ export default function LessonBuilder() {
           </div>
         </section>
 
-        {/* -------- Bottom Navigation -------- */}
         <div className="flex justify-between items-center border-t border-gray-200 pt-6">
           <Link to="/" className="text-sm text-gray-500 hover:text-gray-700">
             ← Back to Dashboard

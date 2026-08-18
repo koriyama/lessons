@@ -23,39 +23,46 @@ export function gradeActivity(activity, value) {
 }
 
 function gradeGapFill(config, value) {
-  console.log('🔍 Grading gap-fill with config:', config, 'value:', value);
-
   const studentAnswers = value
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(s => s !== '');
 
-  const correctAnswers = (config.answers || [])
-    .map(s => s.trim().toLowerCase())
-    .filter(s => s !== '');
+  // Parse correct answers: each item may contain pipe-separated alternatives
+  const correctAnswerSets = (config.answers || [])
+    .map(item => item.split('|').map(s => s.trim().toLowerCase()).filter(Boolean));
 
-  console.log('📝 Student answers:', studentAnswers);
-  console.log('✅ Correct answers:', correctAnswers);
-
-  if (correctAnswers.length === 0) {
-    console.warn('⚠️ No answer key for gap-fill – returning 0');
+  if (correctAnswerSets.length === 0) {
     return { score: 0, autoCorrect: null };
   }
 
   let score = 0;
-  for (let i = 0; i < Math.min(studentAnswers.length, correctAnswers.length); i++) {
-    if (studentAnswers[i] === correctAnswers[i]) {
+  let allCorrect = true;
+
+  for (let i = 0; i < Math.min(studentAnswers.length, correctAnswerSets.length); i++) {
+    const studentAns = studentAnswers[i] || '';
+    const allowed = correctAnswerSets[i] || [];
+    const isMatch = allowed.includes(studentAns);
+    if (isMatch) {
       score++;
+    } else {
+      allCorrect = false;
     }
   }
 
-  const allFilled = studentAnswers.length >= correctAnswers.length;
-  const allCorrect = score === correctAnswers.length && allFilled;
+  // If student filled fewer blanks than expected, mark as incomplete
+  const allFilled = studentAnswers.length >= correctAnswerSets.length;
+  // If there are extra blanks, they are ignored for scoring but we mark as incorrect? Usually we ignore extra.
+  // We'll treat extra as not all correct.
+  if (studentAnswers.length > correctAnswerSets.length) {
+    allCorrect = false;
+  }
 
-  console.log('🏆 Gap-fill score:', score, 'autoCorrect:', allFilled ? allCorrect : null);
+  const autoCorrect = allFilled ? allCorrect : null;
+
   return {
     score: score,
-    autoCorrect: allFilled ? allCorrect : null,
+    autoCorrect: autoCorrect,
   };
 }
 
