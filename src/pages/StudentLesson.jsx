@@ -203,7 +203,7 @@ export default function StudentLesson() {
   }
 
   function setAnswer(activityId, value) {
-    setAnswers((a) => ({ ...a, [activityId]: value }))
+    setAnswers((prev) => ({ ...prev, [activityId]: value }));
   }
 
   async function handleSubmit() {
@@ -356,7 +356,7 @@ export default function StudentLesson() {
         </div>
 
         <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
-          {/* LEFT COLUMN – Reference Panel (reading, audio, vocab) */}
+          {/* LEFT COLUMN – Reference Panel */}
           {hasReference && (
             <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0">
               <ReferencePanel
@@ -372,7 +372,7 @@ export default function StudentLesson() {
             </div>
           )}
 
-          {/* RIGHT COLUMN – Section title + intro + activities */}
+          {/* RIGHT COLUMN – Activities */}
           <div>
             {isPaginated && currentPage.title && (
               <div className="mb-4">
@@ -387,6 +387,7 @@ export default function StudentLesson() {
               {currentPage.activities.map((activity) => {
                 const Player = PLAYERS[activity.type]
                 const globalIndex = activities.findIndex((a) => a.id === activity.id)
+                const isFirstOnPage = currentPage.activities[0]?.id === activity.id
                 return (
                   <div key={activity.id} className="card p-6">
                     <p className="rail-label mb-3">
@@ -396,6 +397,7 @@ export default function StudentLesson() {
                       activity={activity}
                       value={answers[activity.id]}
                       onChange={(v) => setAnswer(activity.id, v)}
+                      autoFocus={isFirstOnPage}
                     />
                   </div>
                 )
