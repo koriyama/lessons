@@ -137,7 +137,7 @@ export async function duplicateLesson(id) {
         ...rest,
         section_id: section_id ? sectionIdMap[section_id] ?? null : null
       })),
-      true // force = true to skip any confirmation
+      true
     )
   }
   if (vocabulary.length) {
@@ -197,7 +197,6 @@ export async function listActivities(lessonId) {
 }
 
 export async function saveActivities(lessonId, activities, force = false) {
-  // Delete all existing activities for this lesson
   const { error: deleteError } = await supabase.from('activities').delete().eq('lesson_id', lessonId)
   assertNoError(deleteError, 'Failed to clear old activities')
 
@@ -284,6 +283,10 @@ export async function startSubmission(lessonId, studentIdentifier) {
 }
 
 export async function completeSubmission(submissionId, { score, maxAutoScore, responses }) {
+  console.log('📝 completeSubmission called with submissionId:', submissionId);
+  console.log('📝 responses to insert:', responses);
+
+  // Insert responses
   const { error: responseError } = await supabase.from('responses').insert(
     responses.map((r) => ({
       submission_id: submissionId,
@@ -293,8 +296,12 @@ export async function completeSubmission(submissionId, { score, maxAutoScore, re
       auto_score: r.score
     }))
   )
+  if (responseError) {
+    console.error('❌ Failed to insert responses:', responseError);
+  }
   assertNoError(responseError, 'Failed to save responses')
 
+  // Update submission status
   const { data, error } = await supabase
     .from('submissions')
     .update({
@@ -307,32 +314,43 @@ export async function completeSubmission(submissionId, { score, maxAutoScore, re
     .select()
     .single()
   assertNoError(error, 'Failed to complete submission')
+
+  console.log('✅ Submission completed:', data);
   return data
 }
 
 export async function getResultsForLesson(lessonId) {
+  console.log('🔍 getResultsForLesson called for lessonId:', lessonId);
+
   const { data: submissions, error } = await supabase
     .from('submissions')
     .select('*')
     .eq('lesson_id', lessonId)
     .order('submitted_at', { ascending: false })
   assertNoError(error, 'Failed to load submissions')
+  console.log('📊 Submissions found:', submissions?.length || 0);
 
   const ids = (submissions || []).map((s) => s.id)
   let responses = []
   if (ids.length) {
+    console.log('🔍 Fetching responses for submission IDs:', ids);
     const { data, error: respError } = await supabase
       .from('responses')
       .select('*, activities(prompt, type)')
       .in('submission_id', ids)
     assertNoError(respError, 'Failed to load responses')
     responses = data || []
+    console.log('📊 Responses found:', responses.length);
+  } else {
+    console.log('ℹ️ No submissions found, skipping responses fetch.');
   }
 
-  return (submissions || []).map((s) => ({
+  const result = (submissions || []).map((s) => ({
     ...s,
     responses: responses.filter((r) => r.submission_id === s.id)
   }))
+  console.log('📊 Final results:', result.map(s => ({ id: s.id, responses: s.responses.length })));
+  return result
 }
 
 // ---------- Save & Exit ----------

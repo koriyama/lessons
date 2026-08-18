@@ -1,24 +1,26 @@
-// Shared by any component that displays teacher-written text and should
-// understand the same lightweight markup: **word** for bold, *word* for
-// italic. Kept in one place so "does bold/italic work here?" has one answer,
-// not one answer per component.
-export function renderInline(text, keyPrefix) {
-  if (!text) return text
-  const parts = []
-  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*/g
-  let lastIndex = 0
-  let match
-  let i = 0
+import React from 'react';
 
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
-    if (match[1] !== undefined) {
-      parts.push(<strong key={`${keyPrefix}-${i++}`}>{match[1]}</strong>)
-    } else {
-      parts.push(<em key={`${keyPrefix}-${i++}`}>{match[2]}</em>)
-    }
-    lastIndex = pattern.lastIndex
-  }
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
-  return parts
+/**
+ * Render inline markup with support for **bold**, *italic*, and line breaks.
+ * This function escapes HTML and then applies markdown-style formatting.
+ */
+export function renderInline(text, className = '') {
+  if (!text) return null;
+
+  // Escape HTML entities to prevent XSS
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Bold: **text** -> <strong>text</strong>
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Italic: *text* -> <em>text</em>
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Line breaks: \n -> <br />
+  html = html.replace(/\n/g, '<br />');
+
+  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }

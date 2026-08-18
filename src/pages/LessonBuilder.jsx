@@ -118,7 +118,6 @@ function MultipleChoiceEditor({ activity, onChange, inputRef }) {
     updateConfig({ correctIndex: index })
   }
 
-  // Unique radio group name per activity
   const radioName = `correct-option-${activity.id}`
 
   return (
@@ -261,6 +260,7 @@ export default function LessonBuilder() {
   const inputRefs = useRef({})
   const focusedRef = useRef(new Set())
 
+  // ---------- Load existing lesson ----------
   useEffect(() => {
     if (!id) {
       setLesson({ title: '', level: 'B1', reading_text: '', audio_url: null, images: [] })
@@ -281,6 +281,7 @@ export default function LessonBuilder() {
     load()
   }, [id])
 
+  // ---------- Auto‑focus ----------
   useEffect(() => {
     if (activities.length > 0) {
       const lastActivity = activities[activities.length - 1]
@@ -298,6 +299,7 @@ export default function LessonBuilder() {
     }
   }, [activities])
 
+  // ---------- Save ----------
   async function handleSave(shouldPublish = false) {
     setSaving(true)
     setError(null)
@@ -376,6 +378,7 @@ export default function LessonBuilder() {
     await handleSave(true)
   }
 
+  // ---------- Upload ----------
   async function handleAudioUpload(file) {
     if (!file) return
     try {
@@ -401,6 +404,7 @@ export default function LessonBuilder() {
     }
   }
 
+  // ---------- Activity CRUD ----------
   function addActivity(type) {
     const defaultSectionId = sections.length > 0 ? sections[0].id : null
     let newActivity = {
@@ -439,6 +443,7 @@ export default function LessonBuilder() {
     setActivities(newActivities)
   }
 
+  // ---------- Vocabulary CRUD ----------
   function addVocabularyItem() {
     setVocabulary([...vocabulary, { id: `temp-${Date.now()}`, term: '', definition: '', example: '' }])
   }
@@ -453,6 +458,7 @@ export default function LessonBuilder() {
     setVocabulary(vocabulary.filter((_, i) => i !== index))
   }
 
+  // ---------- Section CRUD ----------
   function addSection() {
     setSections([...sections, { id: `temp-${Date.now()}-${Math.random()}`, title: '', intro_text: '' }])
   }
@@ -476,6 +482,101 @@ export default function LessonBuilder() {
     setSections(newSections)
   }
 
+  // ---------- EXPORT ----------
+  function handleExport() {
+    const data = {
+      version: '1.0',
+      lesson: {
+        title: lesson.title || 'Untitled',
+        level: lesson.level || 'B1',
+        reading_text: lesson.reading_text || '',
+        audio_url: lesson.audio_url || null,
+        images: lesson.images || []
+      },
+      sections: sections.map(({ id, ...rest }) => rest), // remove temp/real id
+      activities: activities.map(({ id, ...rest }) => rest),
+      vocabulary: vocabulary.map(({ id, ...rest }) => rest)
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${lesson.title || 'lesson'}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // ---------- IMPORT ----------
+  const fileInputRef = useRef(null)
+
+  function handleImportClick() {
+    fileInputRef.current.click()
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result)
+        if (!data.lesson) throw new Error('Invalid lesson file: missing "lesson"')
+        // Replace state
+        setLesson({
+          title: data.lesson.title || 'Untitled',
+          level: data.lesson.level || 'B1',
+          reading_text: data.lesson.reading_text || '',
+          audio_url: data.lesson.audio_url || null,
+          images: data.lesson.images || []
+        })
+        // Re‑generate temp IDs for sections, activities, vocabulary
+        const newSections = (data.sections || []).map((s, i) => ({
+          id: `temp-${Date.now()}-${i}-${Math.random()}`,
+          title: s.title || '',
+          intro_text: s.intro_text || ''
+        }))
+        setSections(newSections)
+        // Map old section IDs to new ones for activities
+        const oldToNew = {}
+        ;(data.sections || []).forEach((old, i) => {
+          oldToNew[old.id] = newSections[i].id
+        })
+        const newActivities = (data.activities || []).map((a, i) => ({
+          id: `temp-${Date.now()}-${i}-${Math.random()}`,
+          type: a.type || 'gap_fill',
+          prompt: a.prompt || '',
+          config: a.config || {},
+          points: a.points ?? 1,
+          section_id: a.section_id ? oldToNew[a.section_id] || null : null
+        }))
+        setActivities(newActivities)
+        const newVocabulary = (data.vocabulary || []).map((v, i) => ({
+          id: `temp-${Date.now()}-${i}-${Math.random()}`,
+          term: v.term || '',
+          definition: v.definition || '',
+          example: v.example || ''
+        }))
+        setVocabulary(newVocabulary)
+        // Clear any previous error
+        setError(null)
+        // Navigate to builder without id (new lesson) if not editing, else keep id? Better to clear id by navigating to /builder
+        if (isEditing) {
+          // If editing, we replace the current data but keep the same lesson id – user can save to overwrite or save as new.
+          // We'll keep the id as is, but the data is replaced. Saving will update the existing lesson.
+          // But we removed the id from sections etc., so it's safe.
+        }
+      } catch (err) {
+        setError('Failed to import lesson: ' + err.message)
+      }
+    }
+    reader.readAsText(file)
+    // Reset input so the same file can be re-uploaded
+    e.target.value = ''
+  }
+
+  // ---------- RENDER ----------
   if (error) {
     return (
       <div className="min-h-screen p-6">
@@ -523,7 +624,26 @@ export default function LessonBuilder() {
                 {activityCount} activities
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                className="btn-secondary text-sm"
+                onClick={handleExport}
+              >
+                📤 Export
+              </button>
+              <button
+                className="btn-secondary text-sm"
+                onClick={handleImportClick}
+              >
+                📥 Import
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImportFile}
+                className="hidden"
+              />
               <button
                 className="btn-secondary text-sm"
                 onClick={() => handleSave(false)}
@@ -557,6 +677,7 @@ export default function LessonBuilder() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        {/* -------- Lesson Metadata -------- */}
         <section className="card p-6 space-y-4">
           <h2 className="text-lg font-display">Lesson Details</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -655,6 +776,7 @@ export default function LessonBuilder() {
           </div>
         </section>
 
+        {/* -------- Sections -------- */}
         <section className="card p-6 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-display">Sections (Pages)</h2>
@@ -725,6 +847,7 @@ export default function LessonBuilder() {
           </div>
         </section>
 
+        {/* -------- Activities -------- */}
         <section className="card p-6 space-y-4" ref={activitiesContainerRef}>
           <div className="sticky top-16 z-10 bg-white -mx-6 px-6 py-3 border-b border-gray-200 shadow-sm flex flex-wrap justify-between items-center gap-2">
             <div className="flex items-center gap-3">
@@ -838,6 +961,7 @@ export default function LessonBuilder() {
           </div>
         </section>
 
+        {/* -------- Vocabulary -------- */}
         <section className="card p-6 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-display">Vocabulary Support</h2>
@@ -879,6 +1003,7 @@ export default function LessonBuilder() {
           </div>
         </section>
 
+        {/* -------- Bottom Navigation -------- */}
         <div className="flex justify-between items-center border-t border-gray-200 pt-6">
           <Link to="/" className="text-sm text-gray-500 hover:text-gray-700">
             ← Back to Dashboard

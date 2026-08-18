@@ -68,15 +68,19 @@ const ReferencePanel = memo(function ReferencePanel({
       )}
 
       {lesson.reading_text && (
-        <div>
+        <div className="card p-6">
           <button
-            className="flex items-center justify-between w-full text-left mb-2"
+            className="flex items-center justify-between w-full text-left"
             onClick={() => setShowReading((v) => !v)}
           >
             <span className="rail-label">reading</span>
             <span className="text-xs text-muted">{showReading ? 'hide' : 'show'}</span>
           </button>
-          {showReading && <ReadingText text={lesson.reading_text} />}
+          {showReading && (
+            <div className="mt-4">
+              <ReadingText text={lesson.reading_text} />
+            </div>
+          )}
         </div>
       )}
 
@@ -149,6 +153,10 @@ export default function StudentLesson() {
         } else {
           setNoActivitiesWarning(false)
         }
+        if (isDraftPreview) {
+          setSubmissionId('preview')
+          setStudentName('Preview User')
+        }
       } catch (e) {
         console.error(e)
         setError('This lesson link is not available. Check the link with your teacher.')
@@ -172,10 +180,13 @@ export default function StudentLesson() {
   }, [sections, activities])
 
   // ---------- PROGRESS ----------
-  const { progress, loading: progressLoading, save } = useLessonProgress(lesson?.id, studentName);
+  const { progress, loading: progressLoading, save } = useLessonProgress(
+    !isDraftPreview && lesson?.id ? lesson.id : null,
+    studentName
+  );
 
   useEffect(() => {
-    if (!progress) return;
+    if (!progress || isDraftPreview) return;
     if (progress.draft_answers && Object.keys(progress.draft_answers).length > 0) {
       setAnswers(progress.draft_answers);
     }
@@ -184,15 +195,15 @@ export default function StudentLesson() {
         setPageIndex(progress.current_section_index);
       }
     }
-  }, [progress, pages.length]);
+  }, [progress, pages.length, isDraftPreview]);
 
   useEffect(() => {
-    if (!lesson?.id || activities.length === 0) return;
+    if (isDraftPreview || !lesson?.id || activities.length === 0) return;
     const timer = setTimeout(() => {
       save(pageIndex, answers);
     }, 800);
     return () => clearTimeout(timer);
-  }, [answers, pageIndex, lesson?.id, activities.length, save]);
+  }, [answers, pageIndex, lesson?.id, activities.length, save, isDraftPreview]);
 
   // ---------- HANDLERS ----------
   async function handleStart(e) {
@@ -207,6 +218,21 @@ export default function StudentLesson() {
   }
 
   async function handleSubmit() {
+    if (isDraftPreview) {
+      let score = 0
+      let maxAutoScore = 0
+      activities.forEach((activity) => {
+        const value = answers[activity.id] ?? ''
+        const graded = gradeActivity(activity, value)
+        if (isAutoGraded(activity.type)) {
+          maxAutoScore += activity.points ?? 1
+          score += graded.score || 0
+        }
+      })
+      setResult({ score, maxAutoScore })
+      return
+    }
+
     setSubmitting(true)
     try {
       let score = 0
@@ -244,7 +270,7 @@ export default function StudentLesson() {
     if (window.confirm('This will delete all your saved progress for this lesson. Are you sure?')) {
       setAnswers({})
       setPageIndex(0)
-      save(0, {})
+      if (!isDraftPreview) save(0, {})
       alert('Progress has been reset. You are back at the start.')
     }
   }
@@ -271,7 +297,7 @@ export default function StudentLesson() {
   if (error) return <div className="min-h-screen flex items-center justify-center p-6"><div className="card p-8 max-w-md text-center"><p className="text-crest">{error}</p></div></div>
   if (!lesson) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted">Loading lesson…</p></div>
 
-  if (!submissionId) {
+  if (!isDraftPreview && !submissionId) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <form onSubmit={handleStart} className="card p-8 max-w-sm w-full space-y-4">
@@ -309,10 +335,18 @@ export default function StudentLesson() {
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card p-8 max-w-md w-full text-center space-y-3">
           <p className="text-forest text-3xl">✓</p>
-          <h1 className="text-2xl font-display">Lesson complete</h1>
-          <p className="text-muted text-sm">Thank you, {studentName}. Your responses have been recorded.</p>
+          <h1 className="text-2xl font-display">
+            {isDraftPreview ? 'Preview complete' : 'Lesson complete'}
+          </h1>
+          <p className="text-muted text-sm">
+            {isDraftPreview
+              ? 'This was a preview. Your answers were not saved.'
+              : `Thank you, ${studentName}. Your responses have been recorded.`}
+          </p>
           {hasAuto && <p className="font-mono text-sm">Auto-marked score: {result.score} / {result.maxAutoScore}</p>}
-          <p className="text-xs text-muted">Short-answer and reasoning responses will be reviewed by your teacher.</p>
+          {!isDraftPreview && (
+            <p className="text-xs text-muted">Short-answer and reasoning responses will be reviewed by your teacher.</p>
+          )}
         </div>
       </div>
     )
@@ -326,39 +360,45 @@ export default function StudentLesson() {
   return (
     <div className="min-h-screen">
       <header className="border-b border-rule bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-3">
+        <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-wrap justify-between items-center gap-2">
             <p className="rail-label mb-0 text-xs sm:text-sm">
               {lesson.level} · English On Demand Lesson
               {isPaginated && ` · page ${pageIndex + 1} of ${pages.length}`}
-              {isDraftPreview && <span className="ml-2 text-orange-500 font-medium">(DRAFT PREVIEW)</span>}
+              {isDraftPreview && <span className="ml-2 text-orange-500 font-medium">(PREVIEW)</span>}
             </p>
             <div className="flex gap-2 flex-shrink-0">
               <button onClick={handleRestart} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors min-h-[44px] flex items-center">
                 🔄 Restart
               </button>
-              <SaveExitButton onSave={() => save(pageIndex, answers)} isLoading={progressLoading} slug={slug} />
+              {!isDraftPreview && (
+                <SaveExitButton
+                  onSave={() => save(pageIndex, answers)}
+                  isLoading={progressLoading}
+                  slug={slug}
+                />
+              )}
             </div>
           </div>
           <h1 className="text-xl sm:text-2xl font-display mt-1 leading-tight">{lesson.title}</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
           {isPaginated && pageIndex > 0 ? (
             <button className="btn-secondary text-sm" onClick={goBack}>← Back</button>
           ) : <span />}
           <span className="text-sm text-gray-400">{isPaginated && `Page ${pageIndex + 1} of ${pages.length}`}</span>
           <button className="btn-primary text-sm" onClick={goNext} disabled={submitting}>
-            {isLastPage ? (submitting ? 'Submitting…' : 'Submit lesson') : 'Next →'}
+            {isLastPage ? (submitting ? 'Submitting…' : (isDraftPreview ? 'Finish preview' : 'Submit lesson')) : 'Next →'}
           </button>
         </div>
 
         <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
           {/* LEFT COLUMN – Reference Panel */}
           {hasReference && (
-            <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0">
+            <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0 pr-0 lg:pr-6">
               <ReferencePanel
                 lesson={lesson}
                 vocabulary={vocabulary}
@@ -373,7 +413,7 @@ export default function StudentLesson() {
           )}
 
           {/* RIGHT COLUMN – Activities */}
-          <div>
+          <div className="pl-0 lg:pl-6">
             {isPaginated && currentPage.title && (
               <div className="mb-4">
                 <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
@@ -409,7 +449,7 @@ export default function StudentLesson() {
                 <button className="btn-secondary" onClick={goBack}>← Back</button>
               ) : <span />}
               <button className="btn-primary" onClick={goNext} disabled={submitting}>
-                {isLastPage ? (submitting ? 'Submitting…' : 'Submit lesson') : 'Next →'}
+                {isLastPage ? (submitting ? 'Submitting…' : (isDraftPreview ? 'Finish preview' : 'Submit lesson')) : 'Next →'}
               </button>
             </div>
           </div>
