@@ -18,22 +18,21 @@ export function gradeActivity(activity, value) {
     case 'reasoning':
       return gradeReasoning(config, value);
     default:
-      return { score: 0, autoCorrect: null };
+      return { score: 0, autoCorrect: null, maxScore: 0 };
   }
 }
 
-function gradeGapFill(config, value) {
+export function gradeGapFill(config, value) {
   const studentAnswers = value
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(s => s !== '');
 
-  // Parse correct answers: each item may contain pipe-separated alternatives
   const correctAnswerSets = (config.answers || [])
     .map(item => item.split('|').map(s => s.trim().toLowerCase()).filter(Boolean));
 
   if (correctAnswerSets.length === 0) {
-    return { score: 0, autoCorrect: null };
+    return { score: 0, autoCorrect: null, maxScore: 0 };
   }
 
   let score = 0;
@@ -50,10 +49,7 @@ function gradeGapFill(config, value) {
     }
   }
 
-  // If student filled fewer blanks than expected, mark as incomplete
   const allFilled = studentAnswers.length >= correctAnswerSets.length;
-  // If there are extra blanks, they are ignored for scoring but we mark as incorrect? Usually we ignore extra.
-  // We'll treat extra as not all correct.
   if (studentAnswers.length > correctAnswerSets.length) {
     allCorrect = false;
   }
@@ -63,26 +59,28 @@ function gradeGapFill(config, value) {
   return {
     score: score,
     autoCorrect: autoCorrect,
+    maxScore: correctAnswerSets.length,
   };
 }
 
-function gradeMultipleChoice(config, value) {
+export function gradeMultipleChoice(config, value) {
   const correctIndex = config.correctIndex;
   if (correctIndex === undefined || correctIndex === null) {
-    return { score: 0, autoCorrect: null };
+    return { score: 0, autoCorrect: null, maxScore: 1 };
   }
   const selected = parseInt(value, 10);
   const isCorrect = selected === correctIndex;
   return {
     score: isCorrect ? 1 : 0,
     autoCorrect: isCorrect,
+    maxScore: 1,
   };
 }
 
 function gradeShortAnswer(config, value) {
-  return { score: 0, autoCorrect: null };
+  return { score: 0, autoCorrect: null, maxScore: 0 };
 }
 
 function gradeReasoning(config, value) {
-  return { score: 0, autoCorrect: null };
+  return { score: 0, autoCorrect: null, maxScore: 0 };
 }

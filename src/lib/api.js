@@ -1,7 +1,6 @@
 import { supabase } from './supabaseClient'
 
 // ---------- helpers ----------
-
 function makeSlug() {
   return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4)
 }
@@ -14,7 +13,6 @@ function assertNoError(error, context) {
 }
 
 // ---------- lessons ----------
-
 export async function listLessonsWithStats() {
   const { data: lessons, error } = await supabase
     .from('lessons')
@@ -150,15 +148,36 @@ export async function duplicateLesson(id) {
 }
 
 // ---------- sections ----------
-
 export async function listSections(lessonId) {
   const { data, error } = await supabase
     .from('sections')
-    .select('*')
+    .select(`
+      *,
+      activities:activities(
+        id,
+        type,
+        prompt,
+        config,
+        points,
+        position,
+        section_id
+      )
+    `)
     .eq('lesson_id', lessonId)
     .order('position', { ascending: true })
-  assertNoError(error, 'Failed to load sections')
-  return data || []
+  
+  if (error) {
+    console.error('❌ Error in listSections:', error);
+    throw new Error(`Failed to load sections: ${error.message}`)
+  }
+  
+  const sections = (data || []).map(section => ({
+    ...section,
+    activities: (section.activities || []).sort((a, b) => (a.position || 0) - (b.position || 0))
+  }))
+  
+  console.log('📚 listSections returned:', sections.length, 'sections')
+  return sections || []
 }
 
 export async function saveSections(lessonId, sections) {
@@ -180,7 +199,6 @@ export async function saveSections(lessonId, sections) {
 }
 
 // ---------- activities ----------
-
 export async function listActivities(lessonId) {
   console.log('🔎 listActivities called with lessonId:', lessonId);
   const { data, error } = await supabase
@@ -190,10 +208,10 @@ export async function listActivities(lessonId) {
     .order('position', { ascending: true });
   if (error) {
     console.error('❌ Supabase error in listActivities:', error);
-    throw new Error(`Failed to load activities: ${error.message}`);
+    throw new Error(`Failed to load activities: ${error.message}`)
   }
-  console.log('📊 listActivities returned:', data);
-  return data || [];
+  console.log('📊 listActivities returned:', data?.length || 0, 'activities');
+  return data || []
 }
 
 export async function saveActivities(lessonId, activities, force = false) {
@@ -218,7 +236,6 @@ export async function saveActivities(lessonId, activities, force = false) {
 }
 
 // ---------- vocabulary ----------
-
 export async function listVocabulary(lessonId) {
   const { data, error } = await supabase
     .from('vocabulary')
@@ -249,7 +266,6 @@ export async function saveVocabulary(lessonId, items) {
 }
 
 // ---------- storage ----------
-
 export async function uploadAudio(file) {
   const path = `audio/${Date.now()}-${file.name}`
   const { error } = await supabase.storage.from('lesson-media').upload(path, file, { upsert: false })
@@ -267,14 +283,14 @@ export async function uploadImage(file) {
 }
 
 // ---------- submissions & responses ----------
-
 export async function startSubmission(lessonId, studentIdentifier) {
   const { data, error } = await supabase
     .from('submissions')
     .insert({
       lesson_id: lessonId,
       student_identifier: studentIdentifier,
-      status: 'in_progress'
+      status: 'in_progress',
+      answers: {}
     })
     .select()
     .single()
@@ -283,10 +299,6 @@ export async function startSubmission(lessonId, studentIdentifier) {
 }
 
 export async function completeSubmission(submissionId, { score, maxAutoScore, responses }) {
-  console.log('📝 completeSubmission called with submissionId:', submissionId);
-  console.log('📝 responses to insert:', responses);
-
-  // Insert responses
   const { error: responseError } = await supabase.from('responses').insert(
     responses.map((r) => ({
       submission_id: submissionId,
@@ -296,12 +308,8 @@ export async function completeSubmission(submissionId, { score, maxAutoScore, re
       auto_score: r.score
     }))
   )
-  if (responseError) {
-    console.error('❌ Failed to insert responses:', responseError);
-  }
   assertNoError(responseError, 'Failed to save responses')
 
-  // Update submission status
   const { data, error } = await supabase
     .from('submissions')
     .update({
@@ -314,43 +322,32 @@ export async function completeSubmission(submissionId, { score, maxAutoScore, re
     .select()
     .single()
   assertNoError(error, 'Failed to complete submission')
-
-  console.log('✅ Submission completed:', data);
   return data
 }
 
 export async function getResultsForLesson(lessonId) {
-  console.log('🔍 getResultsForLesson called for lessonId:', lessonId);
-
   const { data: submissions, error } = await supabase
     .from('submissions')
     .select('*')
     .eq('lesson_id', lessonId)
     .order('submitted_at', { ascending: false })
   assertNoError(error, 'Failed to load submissions')
-  console.log('📊 Submissions found:', submissions?.length || 0);
 
   const ids = (submissions || []).map((s) => s.id)
   let responses = []
   if (ids.length) {
-    console.log('🔍 Fetching responses for submission IDs:', ids);
     const { data, error: respError } = await supabase
       .from('responses')
       .select('*, activities(prompt, type)')
       .in('submission_id', ids)
     assertNoError(respError, 'Failed to load responses')
     responses = data || []
-    console.log('📊 Responses found:', responses.length);
-  } else {
-    console.log('ℹ️ No submissions found, skipping responses fetch.');
   }
 
-  const result = (submissions || []).map((s) => ({
+  return (submissions || []).map((s) => ({
     ...s,
     responses: responses.filter((r) => r.submission_id === s.id)
   }))
-  console.log('📊 Final results:', result.map(s => ({ id: s.id, responses: s.responses.length })));
-  return result
 }
 
 // ---------- Save & Exit ----------
@@ -372,9 +369,8 @@ export async function saveLessonProgress(lessonId, currentSectionIndex, currentA
     })
     .select()
     .single();
-
-  if (error) throw error;
-  return data;
+  assertNoError(error, 'Failed to save lesson progress')
+  return data
 }
 
 export async function getLessonProgress(lessonId) {
@@ -387,27 +383,19 @@ export async function getLessonProgress(lessonId) {
     .eq('user_id', user.id)
     .eq('lesson_id', lessonId)
     .maybeSingle();
-
   if (error && error.code !== 'PGRST116') throw error;
-  return data;
+  return data
 }
 
 // ---------- folders ----------
 export async function listFolders() {
-  const { data, error } = await supabase
-    .from('folders')
-    .select('*')
-    .order('position', { ascending: true })
+  const { data, error } = await supabase.from('folders').select('*').order('position', { ascending: true })
   assertNoError(error, 'Failed to load folders')
   return data || []
 }
 
 export async function createFolder(name) {
-  const { data, error } = await supabase
-    .from('folders')
-    .insert({ name: name.trim() })
-    .select()
-    .single()
+  const { data, error } = await supabase.from('folders').insert({ name: name.trim() }).select().single()
   assertNoError(error, 'Failed to create folder')
   return data
 }
@@ -424,36 +412,21 @@ export async function updateLessonFolder(lessonId, folderId) {
 }
 
 export async function deleteFolder(folderId) {
-  const { error } = await supabase
-    .from('folders')
-    .delete()
-    .eq('id', folderId)
+  const { error } = await supabase.from('folders').delete().eq('id', folderId)
   assertNoError(error, 'Failed to delete folder')
   return true
 }
 
 export async function reorderFolders(folderIds) {
-  const updates = folderIds.map((id, index) => ({
-    id,
-    position: index
-  }))
-  for (const update of updates) {
-    const { error } = await supabase
-      .from('folders')
-      .update({ position: update.position })
-      .eq('id', update.id)
+  for (let i = 0; i < folderIds.length; i++) {
+    const { error } = await supabase.from('folders').update({ position: i }).eq('id', folderIds[i])
     assertNoError(error, 'Failed to reorder folders')
   }
   return true
 }
 
 export async function renameFolder(folderId, newName) {
-  const { data, error } = await supabase
-    .from('folders')
-    .update({ name: newName.trim() })
-    .eq('id', folderId)
-    .select()
-    .single()
+  const { data, error } = await supabase.from('folders').update({ name: newName.trim() }).eq('id', folderId).select().single()
   assertNoError(error, 'Failed to rename folder')
   return data
 }
@@ -479,20 +452,65 @@ export async function renameLesson(lessonId, newTitle) {
 }
 
 export async function deleteLesson(lessonId) {
-  const { error } = await supabase
-    .from('lessons')
-    .delete()
-    .eq('id', lessonId)
+  const { error } = await supabase.from('lessons').delete().eq('id', lessonId)
   assertNoError(error, 'Failed to delete lesson')
   return true
 }
 
 export async function deleteSubmissions(submissionIds) {
   if (!submissionIds || submissionIds.length === 0) return true
-  const { error } = await supabase
-    .from('submissions')
-    .delete()
-    .in('id', submissionIds)
+  const { error } = await supabase.from('submissions').delete().in('id', submissionIds)
   assertNoError(error, 'Failed to delete submissions')
   return true
+}
+
+// ---------- custom save/load for submissions ----------
+export async function saveSubmission(submissionId, updates) {
+  const { data, error } = await supabase
+    .from('submissions')
+    .update(updates)
+    .eq('id', submissionId)
+    .select()
+    .single()
+  if (error) {
+    console.error('❌ saveSubmission error:', error);
+    throw new Error(`Failed to save submission: ${error.message}`)
+  }
+  return data
+}
+
+export async function getSubmission(slug, studentName) {
+  try {
+    // First get the lesson (published or draft? we use published for real students)
+    const lesson = await getLessonBySlug(slug)
+    if (!lesson) return null
+
+    // Normalize the student name: trim and lowercase for case-insensitive search
+    const normalizedName = studentName.trim()
+    console.log(`🔍 Looking for submission with lesson_id=${lesson.id}, student_identifier='${normalizedName}'`)
+
+    const { data, error } = await supabase
+      .from('submissions')
+      .select('*')
+      .eq('lesson_id', lesson.id)
+      .eq('student_identifier', normalizedName)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error('❌ Error fetching submission:', error)
+      return null
+    }
+
+    if (data) {
+      console.log('✅ Found existing submission:', data.id)
+    } else {
+      console.log('ℹ️ No submission found for this student')
+    }
+    return data
+  } catch (err) {
+    console.error('❌ Exception in getSubmission:', err)
+    return null
+  }
 }

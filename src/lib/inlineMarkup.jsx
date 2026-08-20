@@ -24,3 +24,6 @@ export function renderInline(text, className = '') {
 
   return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+// Alias for compatibility
+export const renderInlineMarkup = renderInline;

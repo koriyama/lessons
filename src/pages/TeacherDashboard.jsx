@@ -1,3 +1,4 @@
+// src/pages/TeacherDashboard.jsx
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -280,12 +281,10 @@ export default function TeacherDashboard() {
   }
 
   function handleCopyLink(slug) {
-    // Build the correct student lesson URL using the current origin
     const url = `${window.location.origin}/lesson/${slug}`
     navigator.clipboard.writeText(url).then(() => {
       alert('Student lesson link copied to clipboard!')
     }).catch(() => {
-      // Fallback for older browsers
       const textarea = document.createElement('textarea')
       textarea.value = url
       document.body.appendChild(textarea)
@@ -543,7 +542,6 @@ export default function TeacherDashboard() {
                           </div>
                         </div>
 
-                        {/* ---------- ACTION BUTTONS ---------- */}
                         <div className="flex items-center gap-1 flex-wrap">
                           <select
                             value={lesson.folder_id || ''}
@@ -560,7 +558,7 @@ export default function TeacherDashboard() {
                           <button
                             onClick={() => handleCopyLink(lesson.share_slug)}
                             className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
-                            title="Copy student URL to clipboard"
+                            title="Copy student URL"
                           >
                             📋 Copy Link
                           </button>
@@ -570,24 +568,6 @@ export default function TeacherDashboard() {
                             className="text-xs text-indigo-600 hover:underline px-2 py-1 whitespace-nowrap font-medium"
                           >
                             ✏️ Edit
-                          </Link>
-
-                          <Link
-                            to={`/lesson/${lesson.share_slug}?draft=true`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline px-2 py-1 whitespace-nowrap"
-                          >
-                            Preview
-                          </Link>
-
-                          <Link
-                            to={`/lesson/${lesson.share_slug}?draft=true`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-green-600 hover:underline px-2 py-1 font-medium whitespace-nowrap"
-                          >
-                            Student View
                           </Link>
 
                           <Link

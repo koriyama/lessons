@@ -1,35 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getLesson, getResultsForLesson, deleteSubmissions } from '../lib/api'
+import { getLesson, getResultsForLesson, deleteSubmissions, listSections } from '../lib/api'
 import { supabase } from '../lib/supabaseClient'
-
-function toCSV(lesson, submissions) {
-  const rows = [['Student', 'Status', 'Submitted', 'Auto score', 'Max auto score', 'Question', 'Response', 'Auto-correct']]
-  for (const s of submissions) {
-    if (s.responses.length === 0) {
-      rows.push([s.student_identifier, s.status, s.submitted_at || '', s.score ?? '', s.max_auto_score ?? '', '', '', ''])
-      continue
-    }
-    for (const r of s.responses) {
-      rows.push([
-        s.student_identifier,
-        s.status,
-        s.submitted_at || '',
-        s.score ?? '',
-        s.max_auto_score ?? '',
-        r.activities?.prompt || '',
-        r.response_text,
-        r.auto_correct === null ? 'teacher review' : r.auto_correct ? 'correct' : 'incorrect'
-      ])
-    }
-  }
-  return rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
-}
 
 export default function LessonResults() {
   const { lessonId } = useParams()
   const [lesson, setLesson] = useState(null)
-  const [submissions, setSubmissions] = useState(null)
+  const [submissions, setSubmissions] = useState([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [exportStatus, setExportStatus] = useState(null)
 
@@ -37,19 +15,86 @@ export default function LessonResults() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [expandedIds, setExpandedIds] = useState(new Set())
 
-  async function load() {
-    try {
-      setLesson(await getLesson(lessonId))
-      setSubmissions(await getResultsForLesson(lessonId))
-    } catch (e) {
-      setError(e.message)
-    }
-  }
+  let activityMap = {}
 
   useEffect(() => {
-    if (lessonId) load()
+    async function loadData() {
+      try {
+        setLoading(true)
+        const lessonData = await getLesson(lessonId)
+        setLesson(lessonData)
+
+        const sectionsData = await listSections(lessonId)
+        const map = {}
+        sectionsData.forEach(section => {
+          (section.activities || []).forEach(act => {
+            map[act.id] = {
+              prompt: act.prompt || '',
+              position: act.position ?? 0,
+              type: act.type,
+              sectionTitle: section.title || '',
+              config: act.config || {}
+            }
+          })
+        })
+        activityMap = map
+
+        const results = await getResultsForLesson(lessonId)
+
+        const enhanced = results.map(sub => {
+          const answers = sub.answers || {}
+          const activityIds = Object.keys(answers).filter(key => !key.endsWith('_graded'))
+          const responses = activityIds.map(activityId => {
+            const responseText = answers[activityId]
+            const gradedKey = activityId + '_graded'
+            const graded = answers[gradedKey] || {}
+            const autoCorrect = graded.autoCorrect !== undefined ? graded.autoCorrect : null
+
+            const actInfo = activityMap[activityId] || { prompt: `Activity ${activityId}`, position: 999, type: 'unknown', config: {} }
+            // For multiple-choice, map the stored index to the actual option text
+            let displayResponse = responseText
+            if (actInfo.type === 'multiple_choice' && responseText !== undefined) {
+              const options = actInfo.config?.options || []
+              const selectedIndex = parseInt(responseText, 10)
+              displayResponse = (selectedIndex >= 0 && selectedIndex < options.length) 
+                ? options[selectedIndex] 
+                : responseText
+            }
+
+            return {
+              id: `resp-${activityId}`,
+              activity_id: activityId,
+              response_text: typeof displayResponse === 'string' ? displayResponse : JSON.stringify(displayResponse),
+              auto_correct: autoCorrect,
+              prompt: actInfo.prompt,
+              position: actInfo.position,
+              type: actInfo.type,
+              sectionTitle: actInfo.sectionTitle
+            }
+          })
+          responses.sort((a, b) => a.position - b.position)
+          return { ...sub, responses }
+        })
+
+        enhanced.sort((a, b) => {
+          if (a.status === 'completed' && b.status !== 'completed') return -1
+          if (a.status !== 'completed' && b.status === 'completed') return 1
+          const dateA = a.submitted_at ? new Date(a.submitted_at) : new Date(0)
+          const dateB = b.submitted_at ? new Date(b.submitted_at) : new Date(0)
+          return dateB - dateA
+        })
+
+        setSubmissions(enhanced)
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
   }, [lessonId])
 
+  // ---------- Selection functions ----------
   function toggleSelect(id) {
     const newSet = new Set(selectedIds)
     if (newSet.has(id)) newSet.delete(id)
@@ -73,6 +118,7 @@ export default function LessonResults() {
     setExpandedIds(newSet)
   }
 
+  // ---------- Delete ----------
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
@@ -83,7 +129,7 @@ export default function LessonResults() {
       await deleteSubmissions(ids)
       setSelectedIds(new Set())
       setExpandedIds(new Set())
-      await load()
+      window.location.reload()
     } catch (err) {
       alert('Failed to delete: ' + err.message)
     } finally {
@@ -91,19 +137,42 @@ export default function LessonResults() {
     }
   }
 
-  // ---------- FIXED: CSV Export with UTF-8 BOM ----------
+  // ---------- CSV Export ----------
   function downloadCSV() {
-    // 1. Generate the raw CSV string
-    const rawCsv = toCSV(lesson, submissions)
-    
-    // 2. Prepend the UTF-8 BOM (Byte Order Mark) so Excel recognises it as UTF-8
+    if (!submissions.length) return
+    const rows = [['Student', 'Status', 'Submitted', 'Score %', 'Max score', 'Q#', 'Question', 'Response', 'Result']]
+    for (const s of submissions) {
+      if (s.responses.length === 0) {
+        rows.push([s.student_identifier, s.status, s.submitted_at || '', s.score ?? '', s.max_auto_score ?? '', '', '', '', ''])
+        continue
+      }
+      for (const r of s.responses) {
+        let resultLabel = 'teacher review'
+        // For auto-graded types, treat null as incorrect
+        if (r.type === 'gap_fill' || r.type === 'multiple_choice') {
+          if (r.auto_correct === true) {
+            resultLabel = 'correct'
+          } else {
+            // false or null -> incorrect
+            resultLabel = 'incorrect'
+          }
+        }
+        rows.push([
+          s.student_identifier,
+          s.status,
+          s.submitted_at || '',
+          s.score ?? '',
+          s.max_auto_score ?? '',
+          r.position + 1,
+          r.prompt,
+          r.response_text,
+          resultLabel
+        ])
+      }
+    }
+    const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
     const bom = '\uFEFF'
-    const csvWithBom = bom + rawCsv
-
-    // 3. Create the Blob with the correct MIME type and encoding
-    const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8' })
-    
-    // 4. Download the file
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -114,6 +183,7 @@ export default function LessonResults() {
     URL.revokeObjectURL(url)
   }
 
+  // ---------- Google Sheets export ----------
   async function exportToSheets() {
     setExportStatus('exporting')
     try {
@@ -127,8 +197,10 @@ export default function LessonResults() {
     }
   }
 
+  // ---------- Render ----------
+  if (loading) return <p className="text-muted mx-4">Loading…</p>
   if (error) return <div className="card p-4 border-crest bg-crestSoft text-crest text-sm mx-4">{error}</div>
-  if (!lesson || !submissions) return <p className="text-muted mx-4">Loading…</p>
+  if (!lesson) return null
 
   const completed = submissions.filter((s) => s.status === 'completed')
   const allSelected = submissions.length > 0 && selectedIds.size === submissions.length
@@ -176,7 +248,6 @@ export default function LessonResults() {
 
       {submissions.length === 0 && <p className="text-muted text-sm">No student activity yet.</p>}
 
-      {/* Bulk Delete Toolbar */}
       {submissions.length > 0 && (
         <div className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1">
           <div className="flex items-center gap-1.5">
@@ -200,13 +271,11 @@ export default function LessonResults() {
         </div>
       )}
 
-      {/* Submission List */}
       <div className="space-y-1">
         {submissions.map((s) => {
           const isExpanded = expandedIds.has(s.id)
           return (
             <div key={s.id} className="bg-white border border-gray-200 rounded overflow-hidden shadow-sm">
-              {/* Summary Row */}
               <div
                 className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-50 cursor-pointer transition-colors"
                 onClick={() => toggleExpand(s.id)}
@@ -214,22 +283,13 @@ export default function LessonResults() {
                 <input
                   type="checkbox"
                   checked={selectedIds.has(s.id)}
-                  onChange={(e) => {
-                    e.stopPropagation()
-                    toggleSelect(s.id)
-                  }}
+                  onChange={(e) => { e.stopPropagation(); toggleSelect(s.id) }}
                   className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 flex-shrink-0"
                 />
                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-1 text-xs">
                   <span className="font-medium truncate">{s.student_identifier}</span>
-                  <span className="capitalize">
-                    {s.status === 'completed' ? '✅' : '⏳'} {s.status}
-                  </span>
-                  <span>
-                    {s.status === 'completed' && s.max_auto_score > 0
-                      ? `${s.score}/${s.max_auto_score}`
-                      : '-'}
-                  </span>
+                  <span className="capitalize">{s.status === 'completed' ? '✅' : '⏳'} {s.status}</span>
+                  <span>{s.status === 'completed' && s.max_auto_score > 0 ? `${s.score}%` : '-'}</span>
                   <span className="text-gray-400 truncate hidden sm:block">
                     {s.submitted_at ? new Date(s.submitted_at).toLocaleDateString() : '—'}
                   </span>
@@ -239,22 +299,33 @@ export default function LessonResults() {
                 </span>
               </div>
 
-              {/* Details Row */}
               {isExpanded && (
                 <div className="border-t border-gray-100 px-2 py-1 bg-gray-50 space-y-1">
                   {s.responses.length === 0 ? (
-                    <p className="text-[10px] text-gray-400 italic">No responses.</p>
+                    <p className="text-[10px] text-gray-400 italic">No responses recorded.</p>
                   ) : (
-                    s.responses.map((r) => (
-                      <div key={r.id} className="text-[11px] bg-white rounded px-1.5 py-0.5 border border-gray-100 flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">
-                          {r.response_text || <span className="text-gray-400 italic">no response</span>}
-                        </span>
-                        {r.auto_correct === true && <span className="text-green-600 text-[10px] font-mono">correct</span>}
-                        {r.auto_correct === false && <span className="text-red-600 text-[10px] font-mono">incorrect</span>}
-                        {r.auto_correct === null && <span className="text-amber-600 text-[10px] font-mono">review</span>}
-                      </div>
-                    ))
+                    s.responses.map((r, index) => {
+                      let resultLabel = 'teacher review'
+                      let resultClass = 'text-amber-600'
+                      // For auto-graded types, treat null as incorrect
+                      if (r.type === 'gap_fill' || r.type === 'multiple_choice') {
+                        if (r.auto_correct === true) {
+                          resultLabel = 'correct'
+                          resultClass = 'text-green-600'
+                        } else {
+                          resultLabel = 'incorrect'
+                          resultClass = 'text-red-600'
+                        }
+                      }
+                      const questionNum = index + 1
+                      return (
+                        <div key={r.id} className="text-[11px] bg-white rounded px-1.5 py-0.5 border border-gray-100 flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-500">Q{questionNum}.</span>
+                          <span className="font-medium">{r.response_text || <span className="text-gray-400 italic">no response</span>}</span>
+                          <span className={`text-[10px] font-mono ${resultClass}`}>{resultLabel}</span>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               )}

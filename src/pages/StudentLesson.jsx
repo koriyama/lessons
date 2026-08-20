@@ -1,460 +1,660 @@
-import { useEffect, useMemo, useState, memo } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
-import {
-  getLessonBySlug,
-  getDraftLessonBySlug,
-  listSections,
+// src/pages/StudentLesson.jsx
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { supabase } from '../lib/supabaseClient';
+import { 
+  getLessonBySlug, 
+  getDraftLessonBySlug, 
+  listSections, 
   listActivities,
-  listVocabulary,
-  startSubmission,
-  completeSubmission
-} from '../lib/api'
-import { gradeActivity, isAutoGraded } from '../lib/grading'
-import { renderInline } from '../lib/inlineMarkup.jsx'
-import AudioPlayer from '../components/AudioPlayer.jsx'
-import ReadingText from '../components/ReadingText.jsx'
-import GapFillPlayer from '../components/activity-players/GapFillPlayer.jsx'
-import MultipleChoicePlayer from '../components/activity-players/MultipleChoicePlayer.jsx'
-import ShortAnswerPlayer from '../components/activity-players/ShortAnswerPlayer.jsx'
-import ReasoningPlayer from '../components/activity-players/ReasoningPlayer.jsx'
-import { useLessonProgress } from '../hooks/useLessonProgress';
-import { SaveExitButton } from '../components/SaveExitButton';
-
-const PLAYERS = {
-  gap_fill: GapFillPlayer,
-  multiple_choice: MultipleChoicePlayer,
-  short_answer: ShortAnswerPlayer,
-  reasoning: ReasoningPlayer
-}
-
-const STAGE_LABEL = {
-  gap_fill: 'Comprehension',
-  multiple_choice: 'Comprehension',
-  short_answer: 'Evidence-based response',
-  reasoning: 'Reasoning'
-}
-
-const ReferencePanel = memo(function ReferencePanel({
-  lesson,
-  vocabulary,
-  showAudio,
-  setShowAudio,
-  showReading,
-  setShowReading,
-  showVocab,
-  setShowVocab
-}) {
-  return (
-    <div className="space-y-6">
-      {lesson.audio_url && (
-        <div>
-          <button
-            className="flex items-center justify-between w-full text-left mb-2"
-            onClick={() => setShowAudio((v) => !v)}
-          >
-            <span className="rail-label">audio</span>
-            <span className="text-xs text-muted">{showAudio ? 'hide' : 'show'}</span>
-          </button>
-          {showAudio && <AudioPlayer src={lesson.audio_url} />}
-        </div>
-      )}
-
-      {lesson.images?.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {lesson.images.map((url) => (
-            <img key={url} src={url} alt="" className="max-h-56 rounded-sm border border-rule" />
-          ))}
-        </div>
-      )}
-
-      {lesson.reading_text && (
-        <div className="card p-6">
-          <button
-            className="flex items-center justify-between w-full text-left"
-            onClick={() => setShowReading((v) => !v)}
-          >
-            <span className="rail-label">reading</span>
-            <span className="text-xs text-muted">{showReading ? 'hide' : 'show'}</span>
-          </button>
-          {showReading && (
-            <div className="mt-4">
-              <ReadingText text={lesson.reading_text} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {vocabulary.length > 0 && (
-        <div className="card p-6">
-          <button
-            className="flex items-center justify-between w-full text-left"
-            onClick={() => setShowVocab((v) => !v)}
-          >
-            <span className="rail-label">vocabulary support</span>
-            <span className="text-xs text-muted">{showVocab ? 'hide' : 'show'}</span>
-          </button>
-          {showVocab && (
-            <dl className="mt-4 space-y-3">
-              {vocabulary.map((v) => (
-                <div key={v.id}>
-                  <dt className="font-medium">{v.term}</dt>
-                  <dd className="text-sm text-muted">{v.definition}</dd>
-                  {v.example && <dd className="text-sm italic text-muted">“{v.example}”</dd>}
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
+  listVocabulary, 
+  saveSubmission, 
+  getSubmission 
+} from '../lib/api';
+import { gradeGapFill, gradeMultipleChoice } from '../lib/grading';
+import { renderInline } from '../lib/inlineMarkup';
+import GapFillPlayer from '../components/activity-players/GapFillPlayer';
+import MultipleChoicePlayer from '../components/activity-players/MultipleChoicePlayer';
+import ShortAnswerPlayer from '../components/activity-players/ShortAnswerPlayer';
+import ReasoningPlayer from '../components/activity-players/ReasoningPlayer';
+import ReferenceDrawer from '../components/ReferenceDrawer';
+import SaveExitButton from '../components/SaveExitButton';
 
 export default function StudentLesson() {
-  const { slug } = useParams()
-  const [searchParams] = useSearchParams()
-  const isDraftPreview = searchParams.get('draft') === 'true'
+  const { slug } = useParams();
+  const [searchParams] = useSearchParams();
+  const isPreview = searchParams.get('draft') === 'true';
 
-  const [lesson, setLesson] = useState(null)
-  const [sections, setSections] = useState([])
-  const [activities, setActivities] = useState([])
-  const [vocabulary, setVocabulary] = useState([])
-  const [error, setError] = useState(null)
-  const [noActivitiesWarning, setNoActivitiesWarning] = useState(false)
-  const [reloadAttempt, setReloadAttempt] = useState(0)
+  const [lesson, setLesson] = useState(null);
+  const [sections, setSections] = useState([]);
+  const [vocabulary, setVocabulary] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const [studentName, setStudentName] = useState('')
-  const [submissionId, setSubmissionId] = useState(null)
-  const [answers, setAnswers] = useState({})
-  const [result, setResult] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [studentName, setStudentName] = useState('');
+  const [nameSubmitted, setNameSubmitted] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [submissionId, setSubmissionId] = useState(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [score, setScore] = useState(null);
+  const [showAnswers, setShowAnswers] = useState(false);
 
-  const [showAudio, setShowAudio] = useState(true)
-  const [showReading, setShowReading] = useState(true)
-  const [showVocab, setShowVocab] = useState(true)
+  const saveTimer = useRef(null);
+  const isSaving = useRef(false);
 
-  const [pageIndex, setPageIndex] = useState(0)
+  // Ref for the activities container to autofocus first input
+  const activitiesContainerRef = useRef(null);
 
-  // ---------- LOAD LESSON DATA ----------
+  // Load lesson (unchanged)
   useEffect(() => {
-    ;(async () => {
+    async function loadLesson() {
       try {
-        const fetchLesson = isDraftPreview ? getDraftLessonBySlug : getLessonBySlug
-        const l = await fetchLesson(slug)
-        setLesson(l)
-        const sectionsData = await listSections(l.id)
-        setSections(sectionsData)
-        const activitiesData = await listActivities(l.id)
-        setActivities(activitiesData)
-        const vocabData = await listVocabulary(l.id)
-        setVocabulary(vocabData)
-        if (!activitiesData || activitiesData.length === 0) {
-          setNoActivitiesWarning(true)
+        console.log('🔍 Starting loadLesson, isPreview:', isPreview, 'slug:', slug);
+        
+        let data;
+        if (isPreview) {
+          data = await getDraftLessonBySlug(slug);
         } else {
-          setNoActivitiesWarning(false)
+          data = await getLessonBySlug(slug);
         }
-        if (isDraftPreview) {
-          setSubmissionId('preview')
-          setStudentName('Preview User')
+        if (!data) throw new Error('Lesson not found');
+        console.log('📦 Lesson data:', data);
+        setLesson(data);
+
+        const loadedVocabulary = await listVocabulary(data.id);
+        console.log('📚 Vocabulary loaded:', loadedVocabulary);
+        setVocabulary(loadedVocabulary || []);
+
+        let loadedSections = await listSections(data.id);
+        const allActivities = await listActivities(data.id);
+        console.log('📊 All activities loaded:', allActivities);
+
+        const activitiesBySection = {};
+        allActivities.forEach(act => {
+          const secId = act.section_id;
+          if (!secId) return;
+          if (!activitiesBySection[secId]) activitiesBySection[secId] = [];
+          activitiesBySection[secId].push(act);
+        });
+        Object.keys(activitiesBySection).forEach(secId => {
+          activitiesBySection[secId].sort((a, b) => (a.position || 0) - (b.position || 0));
+        });
+
+        loadedSections = loadedSections.map(section => ({
+          ...section,
+          activities: activitiesBySection[section.id] || []
+        }));
+        console.log('📚 Final sections with activities:', loadedSections);
+        setSections(loadedSections || []);
+
+        if (!isPreview) {
+          const storedName = localStorage.getItem(`smiley_student_name_${slug}`);
+          if (storedName) {
+            setStudentName(storedName);
+            setNameSubmitted(true);
+            const existing = await getSubmission(slug, storedName);
+            if (existing) {
+              console.log('📋 Found existing submission:', existing.id);
+              setSubmissionId(existing.id);
+              setCurrentPage(existing.current_page || 0);
+              setAnswers(existing.answers || {});
+              if (existing.submitted_at) {
+                setIsSubmitted(true);
+                setScore(existing.score);
+              }
+            } else {
+              console.log('ℹ️ No existing submission found');
+            }
+          }
         }
-      } catch (e) {
-        console.error(e)
-        setError('This lesson link is not available. Check the link with your teacher.')
+      } catch (err) {
+        console.error('❌ Error loading lesson:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-    })()
-  }, [slug, isDraftPreview, reloadAttempt])
-
-  // ---------- PAGES ----------
-  const pages = useMemo(() => {
-    if (sections.length === 0) {
-      return [{ title: null, intro_text: null, activities }]
     }
-    const grouped = sections.map((s) => ({
-      title: s.title,
-      intro_text: s.intro_text,
-      activities: activities.filter((a) => a.section_id === s.id)
-    }))
-    const ungrouped = activities.filter((a) => !a.section_id || !sections.some((s) => s.id === a.section_id))
-    if (ungrouped.length) grouped.push({ title: 'Other questions', intro_text: null, activities: ungrouped })
-    return grouped
-  }, [sections, activities])
+    loadLesson();
+  }, [slug, isPreview]);
 
-  // ---------- PROGRESS ----------
-  const { progress, loading: progressLoading, save } = useLessonProgress(
-    !isDraftPreview && lesson?.id ? lesson.id : null,
-    studentName
-  );
+  // Auto-save (unchanged)
+  const saveDraft = useCallback(async () => {
+    if (isPreview || isSubmitted || !submissionId) return;
+    if (isSaving.current) return;
 
-  useEffect(() => {
-    if (!progress || isDraftPreview) return;
-    if (progress.draft_answers && Object.keys(progress.draft_answers).length > 0) {
-      setAnswers(progress.draft_answers);
-    }
-    if (progress.current_section_index !== undefined) {
-      if (pages.length > 0 && progress.current_section_index < pages.length) {
-        setPageIndex(progress.current_section_index);
-      }
-    }
-  }, [progress, pages.length, isDraftPreview]);
-
-  useEffect(() => {
-    if (isDraftPreview || !lesson?.id || activities.length === 0) return;
-    const timer = setTimeout(() => {
-      save(pageIndex, answers);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [answers, pageIndex, lesson?.id, activities.length, save, isDraftPreview]);
-
-  // ---------- HANDLERS ----------
-  async function handleStart(e) {
-    e.preventDefault()
-    if (!studentName.trim()) return
-    const submission = await startSubmission(lesson.id, studentName.trim())
-    setSubmissionId(submission.id)
-  }
-
-  function setAnswer(activityId, value) {
-    setAnswers((prev) => ({ ...prev, [activityId]: value }));
-  }
-
-  async function handleSubmit() {
-    if (isDraftPreview) {
-      let score = 0
-      let maxAutoScore = 0
-      activities.forEach((activity) => {
-        const value = answers[activity.id] ?? ''
-        const graded = gradeActivity(activity, value)
-        if (isAutoGraded(activity.type)) {
-          maxAutoScore += activity.points ?? 1
-          score += graded.score || 0
-        }
-      })
-      setResult({ score, maxAutoScore })
-      return
-    }
-
-    setSubmitting(true)
+    isSaving.current = true;
     try {
-      let score = 0
-      let maxAutoScore = 0
-
-      const responses = activities.map((activity) => {
-        const value = answers[activity.id] ?? ''
-        const graded = gradeActivity(activity, value)
-
-        if (isAutoGraded(activity.type)) {
-          maxAutoScore += activity.points ?? 1
-          score += graded.score || 0
-        }
-
-        return {
-          activityId: activity.id,
-          responseText: value,
-          autoCorrect: graded.autoCorrect,
-          score: graded.score
-        }
-      })
-
-      await completeSubmission(submissionId, { score, maxAutoScore, responses })
-      save(0, {})
-      setResult({ score, maxAutoScore })
-    } catch (e) {
-      console.error(e)
-      setError(e.message)
+      await saveSubmission(submissionId, {
+        current_page: currentPage,
+        answers,
+      });
+      console.log('✅ Auto-save successful');
+    } catch (err) {
+      console.error('❌ Auto-save failed:', err);
     } finally {
-      setSubmitting(false)
+      isSaving.current = false;
     }
-  }
+  }, [isPreview, isSubmitted, submissionId, currentPage, answers]);
 
-  function handleRestart() {
-    if (window.confirm('This will delete all your saved progress for this lesson. Are you sure?')) {
-      setAnswers({})
-      setPageIndex(0)
-      if (!isDraftPreview) save(0, {})
-      alert('Progress has been reset. You are back at the start.')
+  useEffect(() => {
+    if (!submissionId || isPreview || isSubmitted) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(saveDraft, 1500);
+    return () => clearTimeout(saveTimer.current);
+  }, [saveDraft, submissionId, isPreview, isSubmitted, answers, currentPage]);
+
+  // ---- Autofocus when page changes ----
+  useEffect(() => {
+    if (loading || sections.length === 0) return;
+    // After the DOM updates, find the first focusable element inside the activities container
+    const container = activitiesContainerRef.current;
+    if (!container) return;
+    // Use requestAnimationFrame to wait for the layout
+    requestAnimationFrame(() => {
+      const firstInput = container.querySelector('input, textarea, select');
+      if (firstInput) {
+        firstInput.focus({ preventScroll: true });
+      }
+    });
+  }, [currentPage, sections, loading]);
+
+  // Handle name submission – reuses existing submission (unchanged)
+  const handleNameSubmit = async (e) => {
+    e.preventDefault();
+    const trimmedName = studentName.trim().toLowerCase();
+    if (!trimmedName) return;
+    localStorage.setItem(`smiley_student_name_${slug}`, trimmedName);
+    setNameSubmitted(true);
+
+    if (!isPreview) {
+      try {
+        const existing = await getSubmission(slug, trimmedName);
+        if (existing) {
+          console.log('✅ Reusing existing submission:', existing.id);
+          setSubmissionId(existing.id);
+          setCurrentPage(existing.current_page || 0);
+          setAnswers(existing.answers || {});
+        } else {
+          const { data, error } = await supabase
+            .from('submissions')
+            .insert({
+              lesson_id: lesson.id,
+              student_identifier: trimmedName,
+              current_page: 0,
+              answers: {},
+              status: 'in_progress'
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          console.log('✅ New submission created:', data.id);
+          setSubmissionId(data.id);
+        }
+      } catch (err) {
+        console.error('❌ Error with submission:', err);
+        alert('Could not start or resume lesson. Please try again.\n\nError: ' + err.message);
+      }
     }
-  }
+  };
 
-  function goNext() {
-    if (isLastPage) {
-      handleSubmit()
-    } else {
-      setPageIndex((p) => p + 1)
-      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100)
+  const handleAnswerChange = (activityId, value) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [activityId]: value,
+    }));
+  };
+
+  const goToPage = (index) => {
+    if (index < 0 || index >= sections.length) return;
+    setCurrentPage(index);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Handle final submission (grading) – updated to set answers after grading
+  const handleFinalSubmit = async () => {
+    if (isPreview || isSubmitted) {
+      console.warn('⚠️ Cannot submit: preview or already submitted');
+      return;
     }
-  }
+    if (!submissionId) {
+      alert('No submission found. Please restart the lesson.');
+      return;
+    }
 
-  function goBack() {
-    setPageIndex((p) => Math.max(0, p - 1))
-    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100)
-  }
+    try {
+      let totalScore = 0;
+      let maxAutoScore = 0;
+      const gradedAnswers = { ...answers };
 
-  function handleReloadActivities() {
-    setReloadAttempt(prev => prev + 1);
-  }
+      sections.forEach((section) => {
+        (section.activities || []).forEach((activity) => {
+          if (activity.type === 'gap_fill') {
+            const result = gradeGapFill(activity.config, gradedAnswers[activity.id] || '');
+            gradedAnswers[`${activity.id}_graded`] = result;
+            totalScore += result.score;
+            maxAutoScore += result.maxScore || 0;
+          } else if (activity.type === 'multiple_choice') {
+            const result = gradeMultipleChoice(activity.config, gradedAnswers[activity.id]);
+            gradedAnswers[`${activity.id}_graded`] = result;
+            totalScore += result.score;
+            maxAutoScore += result.maxScore || 0;
+          }
+        });
+      });
 
-  // ---------- RENDER ----------
-  if (error) return <div className="min-h-screen flex items-center justify-center p-6"><div className="card p-8 max-w-md text-center"><p className="text-crest">{error}</p></div></div>
-  if (!lesson) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted">Loading lesson…</p></div>
+      const finalScore = maxAutoScore > 0 ? Math.round((totalScore / maxAutoScore) * 100) : 0;
+      console.log(`📊 Final score: ${finalScore}% (${totalScore}/${maxAutoScore})`);
 
-  if (!isDraftPreview && !submissionId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <form onSubmit={handleStart} className="card p-8 max-w-sm w-full space-y-4">
-          <p className="rail-label">{lesson.level}</p>
-          <h1 className="text-2xl font-display">{lesson.title}</h1>
-          <div className="text-sm text-muted space-y-1">
-            <p>Enter your name to begin this lesson.</p>
-            <p>名前を入力してください。</p>
-            <p className="mt-2">Please use the <strong>exact same name</strong> you used before to continue your saved lesson.</p>
-            <p>以前使用したものと<strong>まったく同じ名前</strong>を入力して、続きを再開してください。</p>
+      // Save graded answers to database and update local state
+      await saveSubmission(submissionId, {
+        current_page: currentPage,
+        answers: gradedAnswers,
+        submitted_at: new Date().toISOString(),
+        score: finalScore,
+        max_auto_score: maxAutoScore,
+        status: 'completed'
+      });
+
+      // Update local answers with graded data so the summary shows correct/incorrect
+      setAnswers(gradedAnswers);
+      setIsSubmitted(true);
+      setScore(finalScore);
+      console.log('✅ Submission completed successfully');
+    } catch (err) {
+      console.error('❌ Final submission failed:', err);
+      alert('Failed to submit. Please try again.');
+    }
+  };
+
+  // Save & Exit handler (unchanged)
+  const handleSaveAndExit = useCallback(async () => {
+    if (!submissionId) {
+      console.warn('⚠️ Cannot save: no submission ID');
+      return;
+    }
+    try {
+      await saveSubmission(submissionId, {
+        current_page: currentPage,
+        answers,
+      });
+      console.log('✅ Saved before exit');
+      localStorage.removeItem(`smiley_student_name_${slug}`);
+      window.location.href = `/lesson/${slug}`;
+    } catch (err) {
+      console.error('❌ Save & Exit failed:', err);
+      alert('Failed to save progress. Please try again.');
+    }
+  }, [submissionId, currentPage, answers, slug]);
+
+  // ---- Download answers as CSV ----
+  const downloadAnswersCSV = () => {
+    const allActivities = sections.flatMap(s => s.activities || []);
+    const rows = [['Question', 'Your Answer', 'Result']];
+    allActivities.forEach((act, idx) => {
+      const qNum = idx + 1;
+      const rawAnswer = answers[act.id];
+      let displayAnswer = rawAnswer || '—';
+      if (act.type === 'multiple_choice' && rawAnswer !== undefined) {
+        const options = act.config?.options || [];
+        const selectedIndex = parseInt(rawAnswer, 10);
+        displayAnswer = (selectedIndex >= 0 && selectedIndex < options.length) 
+          ? options[selectedIndex] 
+          : rawAnswer;
+      }
+      const gradedKey = act.id + '_graded';
+      const graded = answers[gradedKey];
+      let status = 'teacher review';
+      if (act.type === 'gap_fill' || act.type === 'multiple_choice') {
+        if (graded) {
+          status = graded.autoCorrect === true ? 'correct' : 'incorrect';
+        } else {
+          status = 'incorrect';
+        }
+      }
+      rows.push([`Q${qNum}: ${act.prompt || ''}`, displayAnswer, status]);
+    });
+
+    const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${lesson.title.replace(/\s+/g, '-').toLowerCase()}-my-answers.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Render activity player – adds question numbers (unchanged)
+  const renderActivity = (activity, index) => {
+    if (!activity || !activity.type) {
+      return <div className="text-red-500">Invalid activity</div>;
+    }
+
+    const questionNumber = index + 1;
+    const displayPrompt = activity.prompt ? `Q${questionNumber}. ${activity.prompt}` : `Q${questionNumber}`;
+    const activityWithNumber = { ...activity, prompt: displayPrompt };
+
+    const commonProps = {
+      key: activity.id,
+      activity: activityWithNumber,
+      value: answers[activity.id] || '',
+      onChange: (val) => handleAnswerChange(activity.id, val),
+      disabled: isSubmitted || isPreview,
+      autoFocus: index === 0 && currentPage === 0,
+    };
+
+    switch (activity.type) {
+      case 'gap_fill':
+        return <GapFillPlayer {...commonProps} />;
+      case 'multiple_choice':
+        return <MultipleChoicePlayer {...commonProps} />;
+      case 'short_answer':
+        return <ShortAnswerPlayer {...commonProps} />;
+      case 'reasoning':
+        return <ReasoningPlayer {...commonProps} />;
+      default:
+        return (
+          <div className="text-red-500 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+            Unknown activity type: {activity.type}
           </div>
-          <input className="field-input" placeholder="Full name" value={studentName} onChange={(e) => setStudentName(e.target.value)} autoFocus />
-          <button className="btn-primary w-full" type="submit">Begin lesson</button>
-        </form>
+        );
+    }
+  };
+
+  // ---------- Loading ----------
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
-    )
+    );
   }
 
-  if (noActivitiesWarning) {
+  // ---------- Error ----------
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="card p-8 max-w-md text-center">
-          <p className="text-amber-600 text-lg">⚠️ No activities found</p>
-          <p className="text-sm text-muted mt-2">This lesson doesn't have any activities. Please contact your teacher.</p>
-          <button onClick={handleReloadActivities} className="btn-secondary mt-4">🔄 Reload Activities</button>
-          <p className="text-xs text-muted mt-4">If you are the teacher, try saving the lesson again in the builder.</p>
+      <div className="flex items-center justify-center min-h-screen p-6">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 max-w-md text-center">
+          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <p className="text-xs text-gray-500 mt-2">Slug: {slug} | Preview: {String(isPreview)}</p>
         </div>
       </div>
-    )
+    );
   }
 
-  if (result) {
-    const hasAuto = result.maxAutoScore > 0
+  // ---------- Welcome / Name entry (unchanged) ----------
+  if (!nameSubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="card p-8 max-w-md w-full text-center space-y-3">
-          <p className="text-forest text-3xl">✓</p>
-          <h1 className="text-2xl font-display">
-            {isDraftPreview ? 'Preview complete' : 'Lesson complete'}
-          </h1>
-          <p className="text-muted text-sm">
-            {isDraftPreview
-              ? 'This was a preview. Your answers were not saved.'
-              : `Thank you, ${studentName}. Your responses have been recorded.`}
-          </p>
-          {hasAuto && <p className="font-mono text-sm">Auto-marked score: {result.score} / {result.maxAutoScore}</p>}
-          {!isDraftPreview && (
-            <p className="text-xs text-muted">Short-answer and reasoning responses will be reviewed by your teacher.</p>
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-950">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8 max-w-md w-full">
+          <div className="text-center mb-6">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              {lesson.title}
+            </h1>
+            {lesson.level && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Level: {lesson.level}
+              </p>
+            )}
+            <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+              Please enter your name to start the lesson.
+            </p>
+            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
+              <p>⚠️ Important: If you return later, use the <strong>exact same name</strong> (case‑sensitive) to continue your progress.</p>
+              <p className="mt-1">⏳ Your answers are saved automatically as you go.</p>
+            </div>
+          </div>
+
+          {isPreview && (
+            <span className="inline-block bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full mb-4">
+              🔍 PREVIEW MODE
+            </span>
+          )}
+          <form onSubmit={handleNameSubmit} className="space-y-4">
+            <input
+              type="text"
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              placeholder="Your full name"
+              className="w-full px-4 py-3 text-base border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              autoFocus
+              required
+            />
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition text-base min-h-[48px]"
+            >
+              Start Lesson
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- Results ----------
+  if (isSubmitted) {
+    // Build a summary of all answers
+    const allActivities = sections.flatMap(s => s.activities || []);
+    const answerSummary = allActivities.map((act, idx) => {
+      const qNum = idx + 1;
+      const rawAnswer = answers[act.id];
+      let displayAnswer = rawAnswer || '—';
+      
+      // For multiple-choice, map the stored index to the actual option text
+      if (act.type === 'multiple_choice' && rawAnswer !== undefined) {
+        const options = act.config?.options || [];
+        const selectedIndex = parseInt(rawAnswer, 10);
+        displayAnswer = (selectedIndex >= 0 && selectedIndex < options.length) 
+          ? options[selectedIndex] 
+          : rawAnswer;
+      }
+
+      const gradedKey = act.id + '_graded';
+      const graded = answers[gradedKey];
+      let status = 'teacher review';
+      let statusClass = 'bg-yellow-100 text-yellow-700';
+      
+      // For auto-graded activities (gap_fill, multiple_choice), show correct/incorrect
+      if (act.type === 'gap_fill' || act.type === 'multiple_choice') {
+        if (graded) {
+          if (graded.autoCorrect === true) {
+            status = 'correct';
+            statusClass = 'bg-green-100 text-green-700';
+          } else {
+            // false or null -> incorrect
+            status = 'incorrect';
+            statusClass = 'bg-red-100 text-red-700';
+          }
+        } else {
+          // no grading info -> treat as incorrect
+          status = 'incorrect';
+          statusClass = 'bg-red-100 text-red-700';
+        }
+      }
+      // For short_answer and reasoning, always show "teacher review"
+
+      return { qNum, prompt: act.prompt, answer: displayAnswer, status, statusClass };
+    });
+
+    return (
+      <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-2xl mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
+          <div className="text-center">
+            <div className="text-6xl mb-4">🎉</div>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              Well done! 🎉
+            </h2>
+            {score !== null && (
+              <div className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-2xl font-bold px-6 py-3 rounded-full mt-2">
+                {score}%
+              </div>
+            )}
+            <p className="text-gray-600 dark:text-gray-400 mt-4">
+              Thank you for your hard work! Your answers have been submitted.
+            </p>
+
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => setShowAnswers(!showAnswers)}
+                className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
+              >
+                {showAnswers ? 'Hide my answers' : '👀 See my answers'}
+              </button>
+              <button
+                onClick={downloadAnswersCSV}
+                className="inline-block bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-lg transition"
+              >
+                📥 Download my answers
+              </button>
+            </div>
+          </div>
+
+          {showAnswers && (
+            <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Your answers</h3>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {answerSummary.map((item) => (
+                  <div key={item.qNum} className="text-sm border-b border-gray-100 dark:border-gray-800 pb-2">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Q{item.qNum}:</span>
+                      <span className="text-gray-600 dark:text-gray-400">{item.prompt}</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-gray-500 dark:text-gray-400">Your answer:</span>
+                      <span className="font-mono">{item.answer}</span>
+                      <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${item.statusClass}`}>
+                        {item.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>
-    )
+    );
   }
 
-  const isPaginated = sections.length > 0
-  const currentPage = pages[pageIndex] || pages[0]
-  const isLastPage = pageIndex === pages.length - 1
-  const hasReference = Boolean(lesson.audio_url || lesson.reading_text || lesson.images?.length || vocabulary.length)
+  // ---------- No sections ----------
+  if (!sections || sections.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 max-w-md text-center">
+          <p className="text-yellow-700 dark:text-yellow-300">This lesson has no sections yet.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- Main player ----------
+  const currentSection = sections[currentPage] || null;
+  const totalPages = sections.length;
+  const isFirstPage = currentPage === 0;
+  const isLastPage = currentPage === totalPages - 1;
+
+  console.log('🔍 Main player: submissionId =', submissionId);
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-rule bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap justify-between items-center gap-2">
-            <p className="rail-label mb-0 text-xs sm:text-sm">
-              {lesson.level} · English On Demand Lesson
-              {isPaginated && ` · page ${pageIndex + 1} of ${pages.length}`}
-              {isDraftPreview && <span className="ml-2 text-orange-500 font-medium">(PREVIEW)</span>}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-32 md:pb-8">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 px-4 py-3 md:px-8">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base md:text-lg font-semibold text-gray-900 dark:text-white truncate">
+              {lesson.title}
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+              {isPreview ? '🔍 PREVIEW' : `Student: ${studentName}`}
             </p>
-            <div className="flex gap-2 flex-shrink-0">
-              <button onClick={handleRestart} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors min-h-[44px] flex items-center">
-                🔄 Restart
-              </button>
-              {!isDraftPreview && (
-                <SaveExitButton
-                  onSave={() => save(pageIndex, answers)}
-                  isLoading={progressLoading}
-                  slug={slug}
-                />
-              )}
-            </div>
           </div>
-          <h1 className="text-xl sm:text-2xl font-display mt-1 leading-tight">{lesson.title}</h1>
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full whitespace-nowrap">
+              {currentPage + 1} / {totalPages}
+            </span>
+            {!isPreview && submissionId && (
+              <SaveExitButton
+                onSave={handleSaveAndExit}
+                isLoading={false}
+                slug={slug}
+              />
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
-          {isPaginated && pageIndex > 0 ? (
-            <button className="btn-secondary text-sm" onClick={goBack}>← Back</button>
-          ) : <span />}
-          <span className="text-sm text-gray-400">{isPaginated && `Page ${pageIndex + 1} of ${pages.length}`}</span>
-          <button className="btn-primary text-sm" onClick={goNext} disabled={submitting}>
-            {isLastPage ? (submitting ? 'Submitting…' : (isDraftPreview ? 'Finish preview' : 'Submit lesson')) : 'Next →'}
-          </button>
-        </div>
-
-        <div className={hasReference ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-10 lg:items-start' : 'max-w-3xl mx-auto'}>
-          {/* LEFT COLUMN – Reference Panel */}
-          {hasReference && (
-            <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6 mb-8 lg:mb-0 pr-0 lg:pr-6">
-              <ReferencePanel
-                lesson={lesson}
-                vocabulary={vocabulary}
-                showAudio={showAudio}
-                setShowAudio={setShowAudio}
-                showReading={showReading}
-                setShowReading={setShowReading}
-                showVocab={showVocab}
-                setShowVocab={setShowVocab}
-              />
-            </div>
-          )}
-
-          {/* RIGHT COLUMN – Activities */}
-          <div className="pl-0 lg:pl-6">
-            {isPaginated && currentPage.title && (
-              <div className="mb-4">
-                <h2 className="text-xl font-display mb-1">{renderInline(currentPage.title, 'sec-title')}</h2>
-                {currentPage.intro_text && (
-                  <p className="text-sm text-muted">{renderInline(currentPage.intro_text, 'sec-intro')}</p>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-4">
-              {currentPage.activities.map((activity) => {
-                const Player = PLAYERS[activity.type]
-                const globalIndex = activities.findIndex((a) => a.id === activity.id)
-                const isFirstOnPage = currentPage.activities[0]?.id === activity.id
-                return (
-                  <div key={activity.id} className="card p-6">
-                    <p className="rail-label mb-3">
-                      {String(globalIndex + 1).padStart(2, '0')} · {STAGE_LABEL[activity.type]}
-                    </p>
-                    <Player
-                      activity={activity}
-                      value={answers[activity.id]}
-                      onChange={(v) => setAnswer(activity.id, v)}
-                      autoFocus={isFirstOnPage}
-                    />
-                  </div>
-                )
-              })}
+      <main className="max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-8">
+        {currentSection && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                {renderInline(currentSection.title)}
+              </h2>
+              {currentSection.intro_text && (
+                <div className="text-gray-600 dark:text-gray-300 text-base md:text-lg prose prose-gray dark:prose-invert max-w-none">
+                  {renderInline(currentSection.intro_text)}
+                </div>
+              )}
             </div>
 
-            <div className="flex justify-between pt-6">
-              {isPaginated && pageIndex > 0 ? (
-                <button className="btn-secondary" onClick={goBack}>← Back</button>
-              ) : <span />}
-              <button className="btn-primary" onClick={goNext} disabled={submitting}>
-                {isLastPage ? (submitting ? 'Submitting…' : (isDraftPreview ? 'Finish preview' : 'Submit lesson')) : 'Next →'}
-              </button>
+            {/* Container for activities – used for autofocus */}
+            <div ref={activitiesContainerRef} className="space-y-6">
+              {(currentSection.activities || []).map((activity, idx) => (
+                <div
+                  key={activity.id}
+                  className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 md:p-6"
+                >
+                  {renderActivity(activity, idx)}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              {!isFirstPage && (
+                <button
+                  onClick={() => goToPage(currentPage - 1)}
+                  className="flex-1 py-3 px-6 rounded-lg font-medium text-base transition min-h-[48px] bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white"
+                >
+                  ← Previous
+                </button>
+              )}
+
+              {isLastPage ? (
+                <button
+                  onClick={handleFinalSubmit}
+                  disabled={isPreview || !submissionId}
+                  className={`flex-1 py-3 px-6 rounded-lg font-medium text-base transition min-h-[48px] ${
+                    isPreview || !submissionId
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
+                >
+                  {isPreview ? 'Preview Complete' : '📤 Submit Lesson'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => goToPage(currentPage + 1)}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-medium text-base transition min-h-[48px]"
+                >
+                  Next →
+                </button>
+              )}
             </div>
           </div>
-        </div>
+        )}
       </main>
+
+      <ReferenceDrawer
+        lesson={lesson}
+        audioUrl={lesson?.audio_url}
+        imageUrls={lesson?.images || []}
+        vocabulary={vocabulary}
+      />
     </div>
-  )
+  );
 }

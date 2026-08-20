@@ -1,3 +1,4 @@
+// src/pages/LessonBuilder.jsx
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
@@ -561,6 +562,16 @@ export default function LessonBuilder() {
     e.target.value = ''
   }
 
+  // ---------- PREVIEW HANDLER (FIXED) ----------
+  function handlePreview() {
+    if (!lesson.share_slug) {
+      alert('Please save the lesson first to generate a preview link.')
+      return
+    }
+    // Open in new tab with ?draft=true
+    window.open(`/lesson/${lesson.share_slug}?draft=true`, '_blank')
+  }
+
   // ---------- RENDER ----------
   if (error) {
     return (
@@ -613,6 +624,21 @@ export default function LessonBuilder() {
               <button className="btn-secondary text-sm" onClick={handleExport}>📤 Export</button>
               <button className="btn-secondary text-sm" onClick={handleImportClick}>📥 Import</button>
               <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+
+              {/* --- PREVIEW BUTTON (FIXED) --- */}
+              <button
+                className={`text-sm px-4 py-2 rounded transition ${
+                  lesson.share_slug
+                    ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+                onClick={handlePreview}
+                disabled={!lesson.share_slug}
+                title={!lesson.share_slug ? 'Save the lesson to enable preview' : 'Open student preview in new tab'}
+              >
+                👁️ Preview
+              </button>
+
               <button className="btn-secondary text-sm" onClick={() => handleSave(false)} disabled={saving}>
                 {saving ? 'Saving…' : 'Save Draft'}
               </button>

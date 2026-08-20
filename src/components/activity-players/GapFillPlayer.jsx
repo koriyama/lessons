@@ -1,136 +1,97 @@
-import { useState, useEffect, useRef } from 'react';
-import { renderInline } from '../../lib/inlineMarkup.jsx';
+// src/components/activity-players/GapFillPlayer.jsx
+import { renderInline } from '../../lib/inlineMarkup';
 
-export default function GapFillPlayer({ activity, value, onChange, autoFocus = false }) {
+export default function GapFillPlayer({ activity, value = '', onChange, disabled, autoFocus }) {
   const config = activity.config || {};
-  const text = config.text || '';
-  const prompt = activity.prompt || 'Fill in the blanks';
-  const inputRef = useRef(null);
+  const prompt = activity.prompt || '';
+  const textWithBlanks = config.text || '';
 
-  useEffect(() => {
-    if (autoFocus && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [autoFocus]);
-
-  // Parse blanks – supports [[ ]], ____, and ___
+  // Parse the text to extract blanks and text segments
   const parts = [];
-  let delimiter = null;
-  if (text.includes('[[') && text.includes(']]')) delimiter = '[[ ]]';
-  else if (text.includes('____')) delimiter = '____';
-  else if (text.includes('___')) delimiter = '___';
+  let blankIndex = 0;
+  let lastIndex = 0;
+  const regex = /(\[\[.*?\]\]|____|___)/g;
+  let match;
 
-  if (delimiter === '[[ ]]') {
-    const regex = /\[\[(.*?)\]\]/g;
-    let match;
-    let lastIndex = 0;
-    while ((match = regex.exec(text)) !== null) {
-      const before = text.slice(lastIndex, match.index);
-      if (before) parts.push({ type: 'text', content: before });
-      parts.push({ type: 'blank', content: match[1] || '' });
-      lastIndex = regex.lastIndex;
+  while ((match = regex.exec(textWithBlanks)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: textWithBlanks.slice(lastIndex, match.index)
+      });
     }
-    if (lastIndex < text.length) {
-      parts.push({ type: 'text', content: text.slice(lastIndex) });
-    }
-  } else if (delimiter === '____') {
-    const segs = text.split('____');
-    parts.push({ type: 'text', content: segs[0] });
-    for (let i = 1; i < segs.length; i++) {
-      parts.push({ type: 'blank', content: '' });
-      if (i < segs.length - 1 || segs[i]) {
-        parts.push({ type: 'text', content: segs[i] });
-      }
-    }
-  } else if (delimiter === '___') {
-    const segs = text.split('___');
-    parts.push({ type: 'text', content: segs[0] });
-    for (let i = 1; i < segs.length; i++) {
-      parts.push({ type: 'blank', content: '' });
-      if (i < segs.length - 1 || segs[i]) {
-        parts.push({ type: 'text', content: segs[i] });
-      }
-    }
+    parts.push({
+      type: 'blank',
+      index: blankIndex++
+    });
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < textWithBlanks.length) {
+    parts.push({
+      type: 'text',
+      content: textWithBlanks.slice(lastIndex)
+    });
   }
 
-  const blankCount = parts.filter(p => p.type === 'blank').length;
+  const blankValues = value ? value.split(',').map(s => s.trim()) : [];
 
-  const getInitialAnswers = () => {
-    if (!value || typeof value !== 'string') {
-      return new Array(blankCount || 1).fill('');
-    }
-    const vals = value.split(',').map(s => s.trim());
-    while (vals.length < (blankCount || 1)) vals.push('');
-    return vals.slice(0, blankCount || 1);
-  };
-
-  const [answers, setAnswers] = useState(() => getInitialAnswers());
-
-  const handleBlankChange = (index, newVal) => {
-    const newAnswers = [...answers];
-    newAnswers[index] = newVal;
-    setAnswers(newAnswers);
-    const combined = newAnswers.join(', ');
-    onChange(combined);
-  };
-
-  const preventPaste = (e) => {
-    e.preventDefault();
-    return false;
-  };
-
-  // If no blanks, show free-text input
-  if (blankCount === 0 || !text || text.trim() === '') {
+  if (!textWithBlanks) {
     return (
-      <div className="text-ink">
-        {prompt && <div className="text-sm text-muted mb-2">{renderInline(prompt)}</div>}
-        <input
-          ref={inputRef}
-          type="text"
-          className="w-full border-b-2 border-ink bg-transparent px-1 py-1 outline-none focus:border-crest"
-          value={answers[0] || ''}
-          onChange={(e) => {
-            const val = e.target.value;
-            setAnswers([val]);
-            onChange(val);
-          }}
-          onPaste={preventPaste}
-          onDrop={preventPaste}
-          onContextMenu={preventPaste}
-          placeholder="Type your answer here..."
-        />
-        {!text && <p className="text-xs text-muted mt-1">(No gap text defined – free response)</p>}
+      <div className="space-y-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+        {prompt && <div className="text-sm font-medium">{renderInline(prompt)}</div>}
+        <p className="text-yellow-700 dark:text-yellow-300 text-sm">⚠️ This gap-fill activity has no text.</p>
+      </div>
+    );
+  }
+
+  if (blankIndex === 0) {
+    return (
+      <div className="space-y-2">
+        {prompt && <div className="text-sm font-medium">{renderInline(prompt)}</div>}
+        <div className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+          {renderInline(textWithBlanks)}
+        </div>
+        <p className="text-xs text-gray-400">No blanks found in this activity.</p>
       </div>
     );
   }
 
   return (
-    <div className="text-ink">
-      {prompt && <div className="text-sm text-muted mb-2">{renderInline(prompt)}</div>}
-      <div className="leading-relaxed">
+    <div className="space-y-3">
+      {prompt && (
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {renderInline(prompt)}
+        </div>
+      )}
+
+      <div className="text-base text-gray-800 dark:text-gray-200 leading-relaxed">
         {parts.map((part, idx) => {
           if (part.type === 'text') {
-            return <span key={idx}>{part.content}</span>;
-          } else {
-            const blankIndex = parts.slice(0, idx).filter(p => p.type === 'blank').length;
-            const isFirstBlank = blankIndex === 0;
-            return (
-              <input
-                key={idx}
-                ref={isFirstBlank ? inputRef : null}
-                type="text"
-                className="inline-block w-40 border-b-2 border-ink bg-transparent px-1 mx-1 outline-none focus:border-crest"
-                value={answers[blankIndex] || ''}
-                onChange={(e) => handleBlankChange(blankIndex, e.target.value)}
-                onPaste={preventPaste}
-                onDrop={preventPaste}
-                onContextMenu={preventPaste}
-                placeholder="..."
-              />
-            );
+            return <span key={`text-${idx}`}>{renderInline(part.content)}</span>;
           }
+          return (
+            <input
+              key={`blank-${idx}`}
+              type="text"
+              value={blankValues[part.index] || ''}
+              onChange={(e) => {
+                const newValues = [...blankValues];
+                newValues[part.index] = e.target.value;
+                onChange(newValues.join(', '));
+              }}
+              disabled={disabled}
+              autoFocus={autoFocus && part.index === 0}
+              className="mx-1 px-2 py-0.5 border-b-2 border-blue-400 bg-transparent focus:outline-none focus:border-blue-600 min-w-[80px] w-auto inline-block text-center disabled:opacity-50 disabled:border-gray-300"
+              placeholder="__"
+              style={{ minWidth: '80px' }}
+            />
+          );
         })}
       </div>
+
+      <p className="text-xs text-gray-400">
+        {blankIndex} blank{blankIndex > 1 ? 's' : ''} • Enter each answer separated by commas if needed
+      </p>
     </div>
   );
 }

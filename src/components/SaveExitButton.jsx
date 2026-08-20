@@ -1,15 +1,18 @@
+// src/components/SaveExitButton.jsx
 import { useState } from 'react';
 
-export function SaveExitButton({ onSave, isLoading, slug }) {
+export default function SaveExitButton({ onSave, isLoading, slug }) {
   const [saving, setSaving] = useState(false);
 
   const handleClick = async () => {
+    if (saving || isLoading) return;
     setSaving(true);
     try {
       await onSave();
-      window.location.href = `/lesson/${slug}`;
     } catch (err) {
       alert('Failed to save. Please try again.');
+      console.error(err);
+    } finally {
       setSaving(false);
     }
   };
