@@ -43,7 +43,6 @@ export default function StudentLesson() {
   const saveTimer = useRef(null);
   const isSaving = useRef(false);
 
-  // Ref for the activities container to autofocus first input
   const activitiesContainerRef = useRef(null);
 
   // Load lesson (unchanged)
@@ -144,13 +143,11 @@ export default function StudentLesson() {
     return () => clearTimeout(saveTimer.current);
   }, [saveDraft, submissionId, isPreview, isSubmitted, answers, currentPage]);
 
-  // ---- Autofocus when page changes ----
+  // ---- Autofocus on page change ----
   useEffect(() => {
     if (loading || sections.length === 0) return;
-    // After the DOM updates, find the first focusable element inside the activities container
     const container = activitiesContainerRef.current;
     if (!container) return;
-    // Use requestAnimationFrame to wait for the layout
     requestAnimationFrame(() => {
       const firstInput = container.querySelector('input, textarea, select');
       if (firstInput) {
@@ -159,7 +156,44 @@ export default function StudentLesson() {
     });
   }, [currentPage, sections, loading]);
 
-  // Handle name submission – reuses existing submission (unchanged)
+  // ---- Prevent copying / screenshots on results screen ----
+  useEffect(() => {
+    if (!isSubmitted) return;
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const handleKeyDown = (e) => {
+      // Block Ctrl+C, Ctrl+V, Ctrl+P, Cmd+C, Cmd+V, Cmd+P
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 'p')) {
+        e.preventDefault();
+        return false;
+      }
+      // Also block F12 (dev tools)
+      if (e.key === 'F12') {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    const handleCopy = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('keydown', handleKeyDown);
+    // We'll attach copy handler to the summary container via onCopy prop
+
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSubmitted]);
+
+  // Handle name submission – reuses existing submission
   const handleNameSubmit = async (e) => {
     e.preventDefault();
     const trimmedName = studentName.trim().toLowerCase();
@@ -212,7 +246,7 @@ export default function StudentLesson() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Handle final submission (grading) – updated to set answers after grading
+  // Handle final submission (grading)
   const handleFinalSubmit = async () => {
     if (isPreview || isSubmitted) {
       console.warn('⚠️ Cannot submit: preview or already submitted');
@@ -247,7 +281,6 @@ export default function StudentLesson() {
       const finalScore = maxAutoScore > 0 ? Math.round((totalScore / maxAutoScore) * 100) : 0;
       console.log(`📊 Final score: ${finalScore}% (${totalScore}/${maxAutoScore})`);
 
-      // Save graded answers to database and update local state
       await saveSubmission(submissionId, {
         current_page: currentPage,
         answers: gradedAnswers,
@@ -257,7 +290,6 @@ export default function StudentLesson() {
         status: 'completed'
       });
 
-      // Update local answers with graded data so the summary shows correct/incorrect
       setAnswers(gradedAnswers);
       setIsSubmitted(true);
       setScore(finalScore);
@@ -268,7 +300,7 @@ export default function StudentLesson() {
     }
   };
 
-  // Save & Exit handler (unchanged)
+  // Save & Exit handler
   const handleSaveAndExit = useCallback(async () => {
     if (!submissionId) {
       console.warn('⚠️ Cannot save: no submission ID');
@@ -288,48 +320,7 @@ export default function StudentLesson() {
     }
   }, [submissionId, currentPage, answers, slug]);
 
-  // ---- Download answers as CSV ----
-  const downloadAnswersCSV = () => {
-    const allActivities = sections.flatMap(s => s.activities || []);
-    const rows = [['Question', 'Your Answer', 'Result']];
-    allActivities.forEach((act, idx) => {
-      const qNum = idx + 1;
-      const rawAnswer = answers[act.id];
-      let displayAnswer = rawAnswer || '—';
-      if (act.type === 'multiple_choice' && rawAnswer !== undefined) {
-        const options = act.config?.options || [];
-        const selectedIndex = parseInt(rawAnswer, 10);
-        displayAnswer = (selectedIndex >= 0 && selectedIndex < options.length) 
-          ? options[selectedIndex] 
-          : rawAnswer;
-      }
-      const gradedKey = act.id + '_graded';
-      const graded = answers[gradedKey];
-      let status = 'teacher review';
-      if (act.type === 'gap_fill' || act.type === 'multiple_choice') {
-        if (graded) {
-          status = graded.autoCorrect === true ? 'correct' : 'incorrect';
-        } else {
-          status = 'incorrect';
-        }
-      }
-      rows.push([`Q${qNum}: ${act.prompt || ''}`, displayAnswer, status]);
-    });
-
-    const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${lesson.title.replace(/\s+/g, '-').toLowerCase()}-my-answers.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Render activity player – adds question numbers (unchanged)
+  // Render activity player
   const renderActivity = (activity, index) => {
     if (!activity || !activity.type) {
       return <div className="text-red-500">Invalid activity</div>;
@@ -387,7 +378,7 @@ export default function StudentLesson() {
     );
   }
 
-  // ---------- Welcome / Name entry (unchanged) ----------
+  // ---------- Welcome / Name entry ----------
   if (!nameSubmitted) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-950">
@@ -439,14 +430,12 @@ export default function StudentLesson() {
 
   // ---------- Results ----------
   if (isSubmitted) {
-    // Build a summary of all answers
     const allActivities = sections.flatMap(s => s.activities || []);
     const answerSummary = allActivities.map((act, idx) => {
       const qNum = idx + 1;
       const rawAnswer = answers[act.id];
       let displayAnswer = rawAnswer || '—';
       
-      // For multiple-choice, map the stored index to the actual option text
       if (act.type === 'multiple_choice' && rawAnswer !== undefined) {
         const options = act.config?.options || [];
         const selectedIndex = parseInt(rawAnswer, 10);
@@ -460,24 +449,20 @@ export default function StudentLesson() {
       let status = 'teacher review';
       let statusClass = 'bg-yellow-100 text-yellow-700';
       
-      // For auto-graded activities (gap_fill, multiple_choice), show correct/incorrect
       if (act.type === 'gap_fill' || act.type === 'multiple_choice') {
         if (graded) {
           if (graded.autoCorrect === true) {
             status = 'correct';
             statusClass = 'bg-green-100 text-green-700';
           } else {
-            // false or null -> incorrect
             status = 'incorrect';
             statusClass = 'bg-red-100 text-red-700';
           }
         } else {
-          // no grading info -> treat as incorrect
           status = 'incorrect';
           statusClass = 'bg-red-100 text-red-700';
         }
       }
-      // For short_answer and reasoning, always show "teacher review"
 
       return { qNum, prompt: act.prompt, answer: displayAnswer, status, statusClass };
     });
@@ -499,26 +484,29 @@ export default function StudentLesson() {
               Thank you for your hard work! Your answers have been submitted.
             </p>
 
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <button
-                onClick={() => setShowAnswers(!showAnswers)}
-                className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
-              >
-                {showAnswers ? 'Hide my answers' : '👀 See my answers'}
-              </button>
-              <button
-                onClick={downloadAnswersCSV}
-                className="inline-block bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-lg transition"
-              >
-                📥 Download my answers
-              </button>
+            <button
+              onClick={() => setShowAnswers(!showAnswers)}
+              className="mt-6 inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
+            >
+              {showAnswers ? 'Hide my answers' : '👀 See my answers'}
+            </button>
+
+            {/* Integrity warning banner */}
+            <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-300">
+              📸 Screenshots and copying are not permitted. Please respect academic integrity.
             </div>
           </div>
 
           {showAnswers && (
             <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Your answers</h3>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              {/* Container with copy prevention */}
+              <div
+                className="space-y-2 max-h-96 overflow-y-auto select-none no-copy"
+                onCopy={(e) => e.preventDefault()}
+                onContextMenu={(e) => e.preventDefault()}
+                style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+              >
                 {answerSummary.map((item) => (
                   <div key={item.qNum} className="text-sm border-b border-gray-100 dark:border-gray-800 pb-2">
                     <div className="flex justify-between">
@@ -558,8 +546,6 @@ export default function StudentLesson() {
   const totalPages = sections.length;
   const isFirstPage = currentPage === 0;
   const isLastPage = currentPage === totalPages - 1;
-
-  console.log('🔍 Main player: submissionId =', submissionId);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-32 md:pb-8">
@@ -602,7 +588,6 @@ export default function StudentLesson() {
               )}
             </div>
 
-            {/* Container for activities – used for autofocus */}
             <div ref={activitiesContainerRef} className="space-y-6">
               {(currentSection.activities || []).map((activity, idx) => (
                 <div
